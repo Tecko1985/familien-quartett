@@ -61,6 +61,7 @@ function zustandOhneRaum() {
     spieler: [],
     amZugSpielerId: null,
     phase: "start",
+    kartenSet: "familie",
     eigeneKarten: [],
     aktuelleRunde: { gewaehlteKategorie: null, ausgespielteKarten: [], gewinnerSpielerId: null },
     siegerSpielerId: null,
@@ -98,6 +99,7 @@ function getZustand() {
     spieler: spielerListe,
     amZugSpielerId: raum.amZugSpielerId || null,
     phase: phaseFuerUi,
+    kartenSet: raum.kartenSet || "familie",
     eigeneKarten: letzteEigeneKarten,
     aktuelleRunde: {
       gewaehlteKategorie: raum.aktuelleRunde ? raum.aktuelleRunde.gewaehlteKategorie : null,
@@ -151,7 +153,7 @@ function betretRaumLokal(code) {
 
 // --- Öffentliche API ---
 
-async function erstelleRaum(spielerName) {
+async function erstelleRaum(spielerName, kartenSet) {
   if (!spielerName || !spielerName.trim()) {
     return { erfolg: false, fehler: "Bitte einen Namen eingeben." };
   }
@@ -161,6 +163,7 @@ async function erstelleRaum(spielerName) {
     erstelltAm: firebase.database.ServerValue.TIMESTAMP,
     hostId: eigeneUid,
     phase: "lobby",
+    kartenSet: kartenSet === "auto" ? "auto" : "familie",
     amZugSpielerId: null,
     siegerSpielerId: null,
     naechsteRundeAngefordert: null,
@@ -248,7 +251,7 @@ async function starteSpiel() {
   const uids = Object.keys(raum.spieler || {});
   if (uids.length < 2) return { erfolg: false, fehler: "Mindestens 2 Spieler nötig." };
 
-  const gemischt = mischeArray(getMockDeck());
+  const gemischt = mischeArray(getMockDeck(raum.kartenSet));
   const haende = {};
   uids.forEach(uid => (haende[uid] = []));
   gemischt.forEach((karte, index) => {

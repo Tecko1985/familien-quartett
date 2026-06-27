@@ -59,6 +59,16 @@ h1, h2 { margin: 0 0 12px; }
 
 .aktion-block { display: flex; flex-direction: column; gap: 10px; margin-bottom: 6px; }
 
+.checkbox-zeile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  text-align: left;
+}
+.checkbox-zeile input { width: 18px; height: 18px; }
+
 .trenner {
   display: flex;
   align-items: center;
@@ -102,6 +112,8 @@ h1, h2 { margin: 0 0 12px; }
 .hinweis-text { color: var(--muted); font-size: 14px; margin-top: 12px; min-height: 18px; }
 .hinweis-text.fehler { color: #dc2626; }
 
+.lobby-modus { text-align: center; color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
 /* Lobby */
 .raumcode-box {
   display: flex;
@@ -111,7 +123,7 @@ h1, h2 { margin: 0 0 12px; }
   border: 2px dashed var(--primary);
   border-radius: var(--radius);
   padding: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 .raumcode-label { font-size: 13px; color: var(--muted); }
 .raumcode-wert { font-size: 28px; font-weight: 700; letter-spacing: 4px; color: var(--primary); }

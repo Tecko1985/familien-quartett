@@ -12,6 +12,7 @@ const SCREEN_FUER_PHASE = {
 
 let ausstehenderModus = null; // "erstellen" | "beitreten"
 let raumcodeEingabe = "";
+let ausstehenderKartenSet = "familie";
 
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
@@ -33,7 +34,7 @@ function avatarInitiale(name) {
 
 // --- Karten-Rendering ---
 
-function erzeugeKartenElement(karte, { waehlbar }) {
+function erzeugeKartenElement(karte, { waehlbar }, kategorien) {
   const wrapper = document.createElement("div");
   wrapper.className = "quartett-karte";
   wrapper.style.setProperty("--avatar-farbe", karte.avatarFarbe);
@@ -43,7 +44,7 @@ function erzeugeKartenElement(karte, { waehlbar }) {
     : `<img class="avatar-fallback" src="avatar-placeholder.svg" alt="Kein Foto">`;
 
   const eigenschaftenHtml = Object.keys(karte.eigenschaften).map(schluessel => {
-    const meta = KATEGORIEN[schluessel] || { label: schluessel, icon: "▫️" };
+    const meta = kategorien[schluessel] || { label: schluessel, icon: "▫️" };
     const klasse = waehlbar ? "eigenschaft waehlbar" : "eigenschaft";
     return `
       <li class="${klasse}" data-kategorie="${schluessel}">
@@ -95,11 +96,14 @@ function renderLobby(zustand) {
   document.getElementById("btn-spiel-starten").style.display = istHost ? "block" : "none";
   document.getElementById("btn-spiel-starten").disabled = zustand.spieler.length < 2;
   document.getElementById("lobby-warte-hinweis").style.display = istHost ? "none" : "block";
+  document.getElementById("lobby-modus").textContent =
+    zustand.kartenSet === "auto" ? "🚗 Auto-Quartett" : "🎴 Familien-Quartett";
 }
 
 function renderSpiel(zustand) {
   const eigeneKarte = zustand.eigeneKarten[0];
   const amZug = zustand.phase === "amZug";
+  const kategorien = getKategorien(zustand.kartenSet);
 
   document.getElementById("spiel-eigene-kartenanzahl").textContent = `🂠 ${zustand.eigeneKarten.length} Karten`;
   document.getElementById("spiel-status-text").textContent = amZug
@@ -112,13 +116,14 @@ function renderSpiel(zustand) {
   const buehne = document.getElementById("spiel-karte-container");
   buehne.innerHTML = "";
   if (eigeneKarte) {
-    buehne.appendChild(erzeugeKartenElement(eigeneKarte, { waehlbar: amZug }));
+    buehne.appendChild(erzeugeKartenElement(eigeneKarte, { waehlbar: amZug }, kategorien));
   }
 }
 
 function renderVergleich(zustand) {
   const runde = zustand.aktuelleRunde;
-  const meta = KATEGORIEN[runde.gewaehlteKategorie] || { label: runde.gewaehlteKategorie, icon: "▫️" };
+  const kategorien = getKategorien(zustand.kartenSet);
+  const meta = kategorien[runde.gewaehlteKategorie] || { label: runde.gewaehlteKategorie, icon: "▫️" };
   document.getElementById("vergleich-kategorie-label").textContent = `${meta.icon} ${meta.label}`;
 
   const liste = document.getElementById("vergleich-liste");
@@ -172,6 +177,7 @@ function render(zustand) {
 
 document.getElementById("btn-raum-erstellen").addEventListener("click", () => {
   ausstehenderModus = "erstellen";
+  ausstehenderKartenSet = document.getElementById("checkbox-auto-modus").checked ? "auto" : "familie";
   document.getElementById("name-eingabe-titel").textContent = "Wie heißt du?";
   document.getElementById("input-spielername").value = "";
   document.getElementById("name-eingabe-fehler").textContent = "";
@@ -201,7 +207,7 @@ document.getElementById("btn-name-bestaetigen").addEventListener("click", async 
   const name = document.getElementById("input-spielername").value.trim();
   const fehlerEl = document.getElementById("name-eingabe-fehler");
   const ergebnis = ausstehenderModus === "erstellen"
-    ? await gameService.erstelleRaum(name)
+    ? await gameService.erstelleRaum(name, ausstehenderKartenSet)
     : await gameService.tritRaumBei(raumcodeEingabe, name);
 
   if (!ergebnis.erfolg) {
