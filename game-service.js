@@ -66,7 +66,14 @@ function zustandOhneRaum() {
     kartenSet: "familie",
     deckgroesse: "normal",
     eigeneKarten: [],
-    aktuelleRunde: { gewaehlteKategorie: null, ausgespielteKarten: [], gewinnerSpielerId: null },
+    aktuelleRunde: {
+      gewaehlteKategorie: null,
+      ausgespielteKarten: [],
+      gewinnerSpielerId: null,
+      weiterBestaetigtAnzahl: 0,
+      weiterBestaetigtGesamt: 0,
+      habeIchBestaetigt: false
+    },
     siegerSpielerId: null,
     maxSpieler: MAX_SPIELER
   };
@@ -95,6 +102,11 @@ function getZustand() {
     phaseFuerUi = "warteAufAndere";
   }
 
+  const bestaetigtVon = raum.aktuelleRunde && raum.aktuelleRunde.weiterBestaetigtVon
+    ? Object.keys(raum.aktuelleRunde.weiterBestaetigtVon)
+    : [];
+  const aktiveSpielerAnzahl = spielerListe.filter(s => !s.istAusgeschieden).length;
+
   return {
     raumCode: aktuellerRaumCode,
     modus: eigenerSpieler ? (eigenerSpieler.istHost ? "host" : "gast") : null,
@@ -108,7 +120,10 @@ function getZustand() {
     aktuelleRunde: {
       gewaehlteKategorie: raum.aktuelleRunde ? raum.aktuelleRunde.gewaehlteKategorie : null,
       ausgespielteKarten: rundenKartenAlsArray(raum.aktuelleRunde),
-      gewinnerSpielerId: raum.aktuelleRunde ? raum.aktuelleRunde.gewinnerSpielerId : null
+      gewinnerSpielerId: raum.aktuelleRunde ? raum.aktuelleRunde.gewinnerSpielerId : null,
+      weiterBestaetigtAnzahl: bestaetigtVon.length,
+      weiterBestaetigtGesamt: aktiveSpielerAnzahl,
+      habeIchBestaetigt: bestaetigtVon.includes(eigeneUid)
     },
     siegerSpielerId: raum.siegerSpielerId || null,
     maxSpieler: MAX_SPIELER
@@ -171,8 +186,13 @@ async function erstelleRaum(spielerName, kartenSet, deckgroesse) {
     deckgroesse: KARTEN_PRO_SPIELER_NACH_DECKGROESSE.hasOwnProperty(deckgroesse) ? deckgroesse : "normal",
     amZugSpielerId: null,
     siegerSpielerId: null,
-    naechsteRundeAngefordert: null,
-    aktuelleRunde: { gewaehlteKategorie: null, ausgespielteKarten: null, gewinnerSpielerId: null },
+    aktuelleRunde: {
+      gewaehlteKategorie: null,
+      ausgespielteKarten: null,
+      gewinnerSpielerId: null,
+      weiterBestaetigtVon: null,
+      vergleichStartZeit: null
+    },
     spieler: {
       [eigeneUid]: {
         name: spielerName.trim(),
@@ -300,7 +320,7 @@ async function bestaetigeWeiter() {
   const raum = letzterOeffentlicherZustand;
   if (!raum || raum.phase !== "vergleich") return { erfolg: false };
   if (!raum.aktuelleRunde || !raum.aktuelleRunde.gewinnerSpielerId) return { erfolg: false }; // Bockrunde laeuft noch
-  await db.ref(`raeume/${aktuellerRaumCode}/naechsteRundeAngefordert`).set(true);
+  await db.ref(`raeume/${aktuellerRaumCode}/aktuelleRunde/weiterBestaetigtVon/${eigeneUid}`).set(true);
   return { erfolg: true };
 }
 
@@ -373,8 +393,8 @@ function pruefeUndLoeseAlsHostAus() {
   if (raum.phase === "aufloesungLaeuft" && raum.aktuelleRunde && raum.aktuelleRunde.gewaehlteKategorie && !raum.aktuelleRunde.ausgespielteKarten) {
     loeseRundeAufAlsHost(raum.aktuelleRunde.gewaehlteKategorie);
   }
-  if (raum.phase === "vergleich" && raum.naechsteRundeAngefordert && raum.aktuelleRunde && raum.aktuelleRunde.gewinnerSpielerId) {
-    fuehreRundenTransferAusAlsHost();
+  if (raum.phase === "vergleich" && raum.aktuelleRunde && raum.aktuelleRunde.gewinnerSpielerId) {
+    pruefeWeiterBedingungAlsHost();
   }
   if (raum.phase === "amZug" && raum.amZugSpielerId && raum.spieler[raum.amZugSpielerId] && raum.spieler[raum.amZugSpielerId].istSimuliert) {
     planeBotZugFallsNoetig(raum.amZugSpielerId);
@@ -384,6 +404,41 @@ function pruefeUndLoeseAlsHostAus() {
   if (raum.phase === "amZug" && raum.austrittAnfrageUid && raum.spieler[raum.austrittAnfrageUid]) {
     entferneSpielerUndVerteileKartenAlsHost(raum.austrittAnfrageUid);
   }
+}
+
+const WEITER_MINDESTWARTEZEIT_MS = 10000;
+let weiterTransferAusgeloestFuer = null; // verhindert doppelten Transfer fuer dieselbe Runde
+let weiterTimerGeplantFuer = null;
+
+// "Weiter" geht erst weiter, wenn entweder alle aktiven Spieler:innen bestaetigt haben,
+// oder spaetestens nach WEITER_MINDESTWARTEZEIT_MS seit Rundenende (Fallback-Timer).
+function pruefeWeiterBedingungAlsHost() {
+  const raum = letzterOeffentlicherZustand;
+  const runde = raum.aktuelleRunde;
+  const startZeit = runde.vergleichStartZeit;
+  if (weiterTransferAusgeloestFuer === startZeit) return;
+
+  const aktiveUids = Object.keys(raum.spieler).filter(uid => !raum.spieler[uid].istAusgeschieden);
+  const bestaetigtUids = runde.weiterBestaetigtVon ? Object.keys(runde.weiterBestaetigtVon) : [];
+  const alleBestaetigt = aktiveUids.length > 0 && aktiveUids.every(uid => bestaetigtUids.includes(uid));
+
+  if (alleBestaetigt) {
+    weiterTransferAusgeloestFuer = startZeit;
+    fuehreRundenTransferAusAlsHost();
+    return;
+  }
+
+  if (weiterTimerGeplantFuer === startZeit) return; // Fallback-Timer schon fuer diese Runde geplant
+  weiterTimerGeplantFuer = startZeit;
+  setTimeout(() => {
+    weiterTimerGeplantFuer = null;
+    const aktuellerRaum = letzterOeffentlicherZustand;
+    if (!aktuellerRaum || !aktuellerRaum.aktuelleRunde) return;
+    if (aktuellerRaum.aktuelleRunde.vergleichStartZeit !== startZeit) return; // Runde ist schon weiter
+    if (weiterTransferAusgeloestFuer === startZeit) return;
+    weiterTransferAusgeloestFuer = startZeit;
+    fuehreRundenTransferAusAlsHost();
+  }, WEITER_MINDESTWARTEZEIT_MS);
 }
 
 let entfernungLaeuft = false;
@@ -481,7 +536,9 @@ async function fuehreVergleichsRundeAlsHost(kategorieSchluessel, teilnehmerUids,
     await db.ref(`raeume/${code}/aktuelleRunde`).update({
       gewinnerSpielerId: teilnehmerUids[0],
       gleichstand: false,
-      pottKarten: pott
+      pottKarten: pott,
+      weiterBestaetigtVon: null,
+      vergleichStartZeit: firebase.database.ServerValue.TIMESTAMP
     });
     return;
   }
@@ -500,7 +557,9 @@ async function fuehreVergleichsRundeAlsHost(kategorieSchluessel, teilnehmerUids,
       ausgespielteKarten: aktuelleKarten,
       gewinnerSpielerId: gleichstandUids[0],
       gleichstand: false,
-      pottKarten: pott
+      pottKarten: pott,
+      weiterBestaetigtVon: null,
+      vergleichStartZeit: firebase.database.ServerValue.TIMESTAMP
     });
     return;
   }
@@ -554,8 +613,6 @@ async function fuehreRundenTransferAusAlsHost() {
       letzterAktiverUid = uid;
     }
   });
-
-  updates[`raeume/${code}/naechsteRundeAngefordert`] = null;
 
   if (nochAktiveAnzahl <= 1) {
     updates[`raeume/${code}/phase`] = "beendet";

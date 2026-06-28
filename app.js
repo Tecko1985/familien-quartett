@@ -153,14 +153,25 @@ function renderVergleich(zustand) {
     });
 
   const weiterBtn = document.getElementById("btn-vergleich-weiter");
+  const bereitText = document.getElementById("vergleich-bereit-text");
   if (!runde.gewinnerSpielerId) {
     document.getElementById("vergleich-gewinner-text").textContent =
       "Gleichstand! Die nächste Karte wird automatisch in derselben Kategorie verglichen …";
     weiterBtn.style.display = "none";
+    bereitText.textContent = "";
   } else {
     document.getElementById("vergleich-gewinner-text").textContent =
       `${getSpielerName(zustand, runde.gewinnerSpielerId)} gewinnt die Runde!`;
     weiterBtn.style.display = "block";
+    bereitText.textContent =
+      `${runde.weiterBestaetigtAnzahl}/${runde.weiterBestaetigtGesamt} Spieler:innen bereit – spätestens nach 10 Sekunden geht’s automatisch weiter.`;
+    if (runde.habeIchBestaetigt) {
+      weiterBtn.disabled = true;
+      weiterBtn.textContent = "Du bist bereit – warte auf die anderen …";
+    } else {
+      weiterBtn.disabled = false;
+      weiterBtn.textContent = "Weiter";
+    }
   }
 }
 
