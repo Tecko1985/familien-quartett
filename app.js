@@ -25,6 +25,26 @@ let kvBearbeiteteKarte = null;
 let kvNeuesFoto = undefined; // undefined = unveraendert, sonst Daten-URL des neuen Fotos
 let nachFamiliencodeAktion = null; // "bestenliste" | "kartenverwaltung"
 
+// Kriterien (Label/Icon) sind ueber den Karten-Tab umbenennbar. Da getKategorien()
+// synchron aus mock-data.js liest, wird hier zusaetzlich ein async geladener,
+// pro Kartenset gemergter Cache gehalten; ohne Familien-Code bleiben es die Basiswerte.
+let kategorienCache = {};
+
+async function stelleKategorienBereit(kartenSet) {
+  if (kategorienCache[kartenSet] || !gameService.getFamilienCode()) return;
+  try {
+    kategorienCache[kartenSet] = await gameService.ladeKategorienZurBearbeitung(kartenSet);
+    render(gameService.getZustand());
+  } catch (e) {
+    // unkritisch: Basiskategorien bleiben als Fallback
+  }
+}
+
+function effektiveKategorien(kartenSet) {
+  stelleKategorienBereit(kartenSet);
+  return kategorienCache[kartenSet] || getKategorien(kartenSet);
+}
+
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
@@ -45,7 +65,7 @@ function avatarInitiale(name) {
 
 // --- Karten-Rendering ---
 
-function erzeugeKartenElement(karte, { waehlbar }, kategorien) {
+function erzeugeKartenElement(karte, { waehlbar, kartenSet }, kategorien) {
   const wrapper = document.createElement("div");
   wrapper.className = "quartett-karte";
   wrapper.style.setProperty("--avatar-farbe", karte.avatarFarbe);
@@ -65,10 +85,11 @@ function erzeugeKartenElement(karte, { waehlbar }, kategorien) {
       </li>`;
   }).join("");
 
+  const rolleHtml = kartenSet === "familie" ? "" : `<span class="karte-rolle">${karte.rolle}</span>`;
   wrapper.innerHTML = `
     <div class="karte-kopf">
       <span class="karte-name">${karte.name}</span>
-      <span class="karte-rolle">${karte.rolle}</span>
+      ${rolleHtml}
     </div>
     <div class="karte-foto">${fotoHtml}</div>
     <ul class="karte-eigenschaften">${eigenschaftenHtml}</ul>
@@ -115,7 +136,7 @@ function renderLobby(zustand) {
 function renderSpiel(zustand) {
   const eigeneKarte = zustand.eigeneKarten[0];
   const amZug = zustand.phase === "amZug";
-  const kategorien = getKategorien(zustand.kartenSet);
+  const kategorien = effektiveKategorien(zustand.kartenSet);
 
   document.getElementById("spiel-eigene-kartenanzahl").textContent = `🂠 ${zustand.eigeneKarten.length} Karten`;
   document.getElementById("spiel-status-text").textContent = amZug
@@ -128,13 +149,13 @@ function renderSpiel(zustand) {
   const buehne = document.getElementById("spiel-karte-container");
   buehne.innerHTML = "";
   if (eigeneKarte) {
-    buehne.appendChild(erzeugeKartenElement(eigeneKarte, { waehlbar: amZug }, kategorien));
+    buehne.appendChild(erzeugeKartenElement(eigeneKarte, { waehlbar: amZug, kartenSet: zustand.kartenSet }, kategorien));
   }
 }
 
 function renderVergleich(zustand) {
   const runde = zustand.aktuelleRunde;
-  const kategorien = getKategorien(zustand.kartenSet);
+  const kategorien = effektiveKategorien(zustand.kartenSet);
   const meta = kategorien[runde.gewaehlteKategorie] || { label: runde.gewaehlteKategorie, icon: "▫️" };
   document.getElementById("vergleich-kategorie-label").textContent = `${meta.icon} ${meta.label}`;
 
@@ -244,11 +265,14 @@ function erzeugeKvEintrag(karte) {
   name.className = "kv-name";
   name.textContent = karte.name;
 
-  const rolle = document.createElement("span");
-  rolle.className = "kv-rolle";
-  rolle.textContent = karte.rolle;
+  div.append(thumb, name);
+  if (kvAusgewaehltesDeck !== "familie") {
+    const rolle = document.createElement("span");
+    rolle.className = "kv-rolle";
+    rolle.textContent = karte.rolle;
+    div.appendChild(rolle);
+  }
 
-  div.append(thumb, name, rolle);
   div.addEventListener("click", () => oeffneKartenBearbeitung(karte));
   return div;
 }
@@ -280,15 +304,21 @@ async function ladeUndZeigeKartenverwaltung() {
   karten.forEach(karte => liste.appendChild(erzeugeKvEintrag(karte)));
 }
 
-function oeffneKartenBearbeitung(karte) {
+async function oeffneKartenBearbeitung(karte) {
   kvBearbeiteteKarte = karte;
   kvNeuesFoto = undefined;
   document.getElementById("kb-fehler").textContent = "";
   document.getElementById("kb-name").value = karte.name;
   document.getElementById("kb-rolle").value = karte.rolle;
+  document.getElementById("kb-rolle-zeile").style.display = kvAusgewaehltesDeck === "familie" ? "none" : "block";
   document.getElementById("kb-foto-vorschau").src = karte.foto || "avatar-placeholder.svg";
 
-  const kategorien = getKategorien(kvAusgewaehltesDeck);
+  let kategorien;
+  try {
+    kategorien = await gameService.ladeKategorienZurBearbeitung(kvAusgewaehltesDeck);
+  } catch (e) {
+    kategorien = getKategorien(kvAusgewaehltesDeck);
+  }
   const container = document.getElementById("kb-eigenschaften-felder");
   container.innerHTML = "";
   Object.keys(kategorien).forEach(schluessel => {
@@ -305,6 +335,62 @@ function oeffneKartenBearbeitung(karte) {
   });
 
   showScreen("screen-karte-bearbeiten");
+}
+
+// --- Kriterien bearbeiten (Label + Icon je Eigenschaft) ---
+
+async function ladeUndZeigeKriterienBearbeitung() {
+  showScreen("screen-kriterien-bearbeiten");
+  const container = document.getElementById("kr-kriterien-felder");
+  const fehlerEl = document.getElementById("kr-fehler");
+  fehlerEl.textContent = "";
+  container.innerHTML = "<p class='hinweis-text'>Lade Kriterien …</p>";
+
+  let kategorien;
+  try {
+    kategorien = await gameService.ladeKategorienZurBearbeitung(kvAusgewaehltesDeck);
+  } catch (e) {
+    container.innerHTML = "";
+    fehlerEl.textContent = "Kriterien konnten nicht geladen werden.";
+    return;
+  }
+
+  container.innerHTML = "";
+  Object.keys(kategorien).forEach(schluessel => {
+    const meta = kategorien[schluessel];
+    const zeile = document.createElement("div");
+    zeile.className = "kr-kriterium-zeile";
+
+    const iconInput = document.createElement("input");
+    iconInput.type = "text";
+    iconInput.className = "eingabe kr-icon-eingabe";
+    iconInput.maxLength = 4;
+    iconInput.dataset.kategorie = schluessel;
+    iconInput.dataset.feld = "icon";
+    iconInput.value = meta.icon;
+
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "eingabe kr-label-eingabe";
+    labelInput.maxLength = 30;
+    labelInput.dataset.kategorie = schluessel;
+    labelInput.dataset.feld = "label";
+    labelInput.value = meta.label;
+
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "kr-reset-btn";
+    resetBtn.title = "Auf Original zurücksetzen";
+    resetBtn.textContent = "↺";
+    resetBtn.addEventListener("click", async () => {
+      await gameService.setzeKategorieZurueck(kvAusgewaehltesDeck, schluessel);
+      delete kategorienCache[kvAusgewaehltesDeck];
+      ladeUndZeigeKriterienBearbeitung();
+    });
+
+    zeile.append(iconInput, labelInput, resetBtn);
+    container.appendChild(zeile);
+  });
 }
 
 // --- Event-Wiring ---
@@ -472,6 +558,39 @@ document.getElementById("kv-deck-auto").addEventListener("click", () => {
 
 document.getElementById("btn-kartenverwaltung-zurueck").addEventListener("click", () => {
   showScreen("screen-start");
+});
+
+document.getElementById("btn-kriterien-oeffnen").addEventListener("click", () => {
+  ladeUndZeigeKriterienBearbeitung();
+});
+
+document.getElementById("btn-kr-zurueck").addEventListener("click", () => {
+  showScreen("screen-kartenverwaltung");
+});
+
+document.getElementById("btn-kr-speichern").addEventListener("click", async () => {
+  const fehlerEl = document.getElementById("kr-fehler");
+  const schluessel = new Set();
+  document.querySelectorAll("#kr-kriterien-felder input").forEach(input => schluessel.add(input.dataset.kategorie));
+
+  try {
+    for (const key of schluessel) {
+      const icon = document.querySelector(`#kr-kriterien-felder input[data-kategorie="${key}"][data-feld="icon"]`).value.trim();
+      const label = document.querySelector(`#kr-kriterien-felder input[data-kategorie="${key}"][data-feld="label"]`).value.trim();
+      if (!icon || !label) {
+        fehlerEl.textContent = "Bitte Icon und Bezeichnung für jedes Kriterium ausfüllen.";
+        return;
+      }
+      await gameService.speichereKategorieUebersteuerung(kvAusgewaehltesDeck, key, { icon, label });
+    }
+  } catch (e) {
+    fehlerEl.textContent = "Speichern fehlgeschlagen.";
+    return;
+  }
+
+  delete kategorienCache[kvAusgewaehltesDeck];
+  fehlerEl.textContent = "";
+  showScreen("screen-kartenverwaltung");
 });
 
 document.getElementById("kb-foto-input").addEventListener("change", e => {

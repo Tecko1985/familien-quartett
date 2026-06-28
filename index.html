@@ -173,6 +173,7 @@
         <button class="btn btn-secondary kv-deck-btn" id="kv-deck-auto">🚗 Auto</button>
       </div>
       <div class="kv-kartenliste" id="kv-kartenliste"></div>
+      <button class="btn btn-link" id="btn-kriterien-oeffnen">📊 Kriterien bearbeiten</button>
       <button class="btn btn-link" id="btn-kartenverwaltung-zurueck">Zurück</button>
     </div>
   </section>
@@ -190,13 +191,27 @@
       </div>
       <label class="kb-feld-label" for="kb-name">Name</label>
       <input type="text" id="kb-name" class="eingabe" maxlength="30">
-      <label class="kb-feld-label" for="kb-rolle">Rolle / Typ</label>
-      <input type="text" id="kb-rolle" class="eingabe" maxlength="30">
+      <div id="kb-rolle-zeile">
+        <label class="kb-feld-label" for="kb-rolle">Rolle / Typ</label>
+        <input type="text" id="kb-rolle" class="eingabe" maxlength="30">
+      </div>
       <div id="kb-eigenschaften-felder" class="kb-eigenschaften-felder"></div>
       <p class="hinweis-text" id="kb-fehler"></p>
       <button class="btn btn-primary btn-grow" id="btn-kb-speichern">Speichern</button>
       <button class="btn btn-secondary btn-grow" id="btn-kb-zuruecksetzen">Auf Original zurücksetzen</button>
       <button class="btn btn-link" id="btn-kb-abbrechen">Abbrechen</button>
+    </div>
+  </section>
+
+  <!-- 12: Kriterien bearbeiten -->
+  <section class="screen" id="screen-kriterien-bearbeiten">
+    <div class="screen-inhalt">
+      <h2>📊 Kriterien bearbeiten</h2>
+      <p class="untertitel">Bezeichnung und Icon der Eigenschaften für dieses Kartenset.</p>
+      <div id="kr-kriterien-felder" class="kr-kriterien-felder"></div>
+      <p class="hinweis-text" id="kr-fehler"></p>
+      <button class="btn btn-primary btn-grow" id="btn-kr-speichern">Speichern</button>
+      <button class="btn btn-link" id="btn-kr-zurueck">Zurück</button>
     </div>
   </section>
 

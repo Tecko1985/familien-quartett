@@ -56,6 +56,16 @@ function setzeFamilienCode(code) {
 // Merged eine Basiskarte aus mock-data.js mit einer optionalen, in Firebase gespeicherten
 // Bearbeitung (Name/Rolle/Foto/einzelne Eigenschaftswerte). Ohne Ueberschreibung bleibt
 // die Karte unveraendert.
+const KATEGORIEN_UEBERSTEUERUNGEN_PFAD = "kategorienUebersteuerungen";
+
+function wendeKategorieUebersteuerungAn(meta, ueberschreibung) {
+  if (!ueberschreibung) return meta;
+  return {
+    label: ueberschreibung.label || meta.label,
+    icon: ueberschreibung.icon || meta.icon
+  };
+}
+
 function wendeUebersteuerungAn(karte, ueberschreibung) {
   if (!ueberschreibung) return karte;
   return {
@@ -485,6 +495,36 @@ async function setzeKarteZurueck(kartenSet, kartenId) {
   return { erfolg: true };
 }
 
+// Liefert die effektiven Kriterien (Label + Icon) eines Kartensets, gemergt mit
+// gespeicherten Umbenennungen. Ohne Familien-Code (oder ohne Ueberschreibung) kommen
+// einfach die Basis-Kriterien aus mock-data.js zurueck.
+async function ladeKategorienZurBearbeitung(kartenSet) {
+  await authBereit;
+  const basis = getKategorien(kartenSet);
+  if (!aktiverFamilienCode) return { ...basis };
+  const snap = await db.ref(`${KATEGORIEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}`).once("value");
+  const ueberschreibungen = snap.val() || {};
+  const ergebnis = {};
+  Object.keys(basis).forEach(schluessel => {
+    ergebnis[schluessel] = wendeKategorieUebersteuerungAn(basis[schluessel], ueberschreibungen[schluessel]);
+  });
+  return ergebnis;
+}
+
+async function speichereKategorieUebersteuerung(kartenSet, schluessel, daten) {
+  if (!aktiverFamilienCode) return { erfolg: false, fehler: "Kein Familien-Code gesetzt." };
+  await authBereit;
+  await db.ref(`${KATEGORIEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}/${schluessel}`).set(daten);
+  return { erfolg: true };
+}
+
+async function setzeKategorieZurueck(kartenSet, schluessel) {
+  if (!aktiverFamilienCode) return { erfolg: false };
+  await authBereit;
+  await db.ref(`${KATEGORIEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}/${schluessel}`).remove();
+  return { erfolg: true };
+}
+
 function onZustandsAenderung(callback) {
   listener = callback;
   let gespeicherterCode = null;
@@ -782,6 +822,9 @@ const gameService = {
   ladeKartenZurBearbeitung,
   speichereKartenUebersteuerung,
   setzeKarteZurueck,
+  ladeKategorienZurBearbeitung,
+  speichereKategorieUebersteuerung,
+  setzeKategorieZurueck,
   getFamilienCode,
   setzeFamilienCode
 };
