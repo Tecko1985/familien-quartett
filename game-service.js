@@ -15,6 +15,7 @@ const TEST_NAMEN_POOL = ["Tom", "Lena", "Max", "Sara", "Jonas", "Mia", "Paul"];
 const SPIELER_FARBEN = ["#1a56a0", "#057a55", "#c9941f", "#9333ea", "#dc2626", "#0891b2", "#db2777", "#ea580c"];
 const MAX_SPIELER = 8;
 const AUTO_PLAY_VERZOEGERUNG_MS = 1400;
+const GLEICHSTAND_VERZOEGERUNG_MS = 1800;
 const KARTEN_PRO_SPIELER_NACH_DECKGROESSE = { klein: 5, normal: 10, gross: null }; // null = ganzer Kartenpool
 
 let eigeneUid = null;
@@ -298,6 +299,7 @@ async function waehleKategorie(kategorieSchluessel) {
 async function bestaetigeWeiter() {
   const raum = letzterOeffentlicherZustand;
   if (!raum || raum.phase !== "vergleich") return { erfolg: false };
+  if (!raum.aktuelleRunde || !raum.aktuelleRunde.gewinnerSpielerId) return { erfolg: false }; // Bockrunde laeuft noch
   await db.ref(`raeume/${aktuellerRaumCode}/naechsteRundeAngefordert`).set(true);
   return { erfolg: true };
 }
@@ -371,7 +373,7 @@ function pruefeUndLoeseAlsHostAus() {
   if (raum.phase === "aufloesungLaeuft" && raum.aktuelleRunde && raum.aktuelleRunde.gewaehlteKategorie && !raum.aktuelleRunde.ausgespielteKarten) {
     loeseRundeAufAlsHost(raum.aktuelleRunde.gewaehlteKategorie);
   }
-  if (raum.phase === "vergleich" && raum.naechsteRundeAngefordert) {
+  if (raum.phase === "vergleich" && raum.naechsteRundeAngefordert && raum.aktuelleRunde && raum.aktuelleRunde.gewinnerSpielerId) {
     fuehreRundenTransferAusAlsHost();
   }
   if (raum.phase === "amZug" && raum.amZugSpielerId && raum.spieler[raum.amZugSpielerId] && raum.spieler[raum.amZugSpielerId].istSimuliert) {
@@ -441,30 +443,76 @@ async function loeseRundeAufAlsHost(kategorieSchluessel) {
   const raum = letzterOeffentlicherZustand;
   const aktiveUids = Object.keys(raum.spieler).filter(uid => !raum.spieler[uid].istAusgeschieden);
 
-  const schnappschuesse = await Promise.all(
-    aktiveUids.map(uid => db.ref(`geheime_karten/${code}/${uid}/karten`).once("value"))
-  );
-  const topKarten = {};
-  aktiveUids.forEach((uid, i) => {
-    const hand = schnappschuesse[i].val() || [];
-    if (hand[0]) topKarten[uid] = hand[0];
+  // Phase sofort auf "vergleich" setzen, damit der Aufloesungs-Trigger nicht doppelt feuert,
+  // waehrend die (eventuell mehrstufige) Bockrunde unten noch laeuft.
+  await db.ref(`raeume/${code}`).update({
+    phase: "vergleich",
+    "aktuelleRunde/gewinnerSpielerId": null,
+    "aktuelleRunde/gleichstand": false
   });
 
-  const beteiligteUids = Object.keys(topKarten);
-  let gewinnerUid = beteiligteUids[0];
-  beteiligteUids.forEach(uid => {
-    if (topKarten[uid].eigenschaften[kategorieSchluessel] > topKarten[gewinnerUid].eigenschaften[kategorieSchluessel]) {
-      gewinnerUid = uid;
+  await fuehreVergleichsRundeAlsHost(kategorieSchluessel, aktiveUids, 0, []);
+}
+
+// Vergleicht die Karte an kartenIndex aller teilnehmerUids in der gewaehlten Kategorie.
+// Bei Gleichstand des Hoechstwerts wird automatisch mit der naechsten Karte (gleiche Kategorie)
+// weiterverglichen ("Bockrunde") – nur unter den gleichstehenden Spieler:innen, alle gespielten
+// Karten sammeln sich im Pott und gehen am Ende komplett an die Siegerin/den Sieger.
+async function fuehreVergleichsRundeAlsHost(kategorieSchluessel, teilnehmerUids, kartenIndex, bisherigerPott) {
+  const code = aktuellerRaumCode;
+  const schnappschuesse = await Promise.all(
+    teilnehmerUids.map(uid => db.ref(`geheime_karten/${code}/${uid}/karten`).once("value"))
+  );
+
+  const aktuelleKarten = {};
+  const pott = bisherigerPott.slice();
+  teilnehmerUids.forEach((uid, i) => {
+    const hand = schnappschuesse[i].val() || [];
+    const karte = hand[kartenIndex];
+    if (karte) {
+      aktuelleKarten[uid] = karte;
+      pott.push({ spielerId: uid, karte });
     }
   });
-  // Hinweis: bei Gleichstand gewinnt deterministisch der erste gefundene Höchstwert
-  // (vereinfachte Regel für diesen Schritt, keine "Bockrunde").
 
-  await db.ref().update({
-    [`raeume/${code}/phase`]: "vergleich",
-    [`raeume/${code}/aktuelleRunde/ausgespielteKarten`]: topKarten,
-    [`raeume/${code}/aktuelleRunde/gewinnerSpielerId`]: gewinnerUid
+  const teilnehmerMitKarte = Object.keys(aktuelleKarten);
+  if (teilnehmerMitKarte.length === 0) {
+    // Niemand hat mehr eine Karte für die Bockrunde – Notbremse, damit das Spiel nicht haengt.
+    await db.ref(`raeume/${code}/aktuelleRunde`).update({
+      gewinnerSpielerId: teilnehmerUids[0],
+      gleichstand: false,
+      pottKarten: pott
+    });
+    return;
+  }
+
+  let hoechstwert = -Infinity;
+  teilnehmerMitKarte.forEach(uid => {
+    const wert = aktuelleKarten[uid].eigenschaften[kategorieSchluessel];
+    if (wert > hoechstwert) hoechstwert = wert;
   });
+  const gleichstandUids = teilnehmerMitKarte.filter(
+    uid => aktuelleKarten[uid].eigenschaften[kategorieSchluessel] === hoechstwert
+  );
+
+  if (gleichstandUids.length === 1) {
+    await db.ref(`raeume/${code}/aktuelleRunde`).update({
+      ausgespielteKarten: aktuelleKarten,
+      gewinnerSpielerId: gleichstandUids[0],
+      gleichstand: false,
+      pottKarten: pott
+    });
+    return;
+  }
+
+  await db.ref(`raeume/${code}/aktuelleRunde`).update({
+    ausgespielteKarten: aktuelleKarten,
+    gewinnerSpielerId: null,
+    gleichstand: true,
+    pottKarten: pott
+  });
+  await new Promise(resolve => setTimeout(resolve, GLEICHSTAND_VERZOEGERUNG_MS));
+  await fuehreVergleichsRundeAlsHost(kategorieSchluessel, gleichstandUids, kartenIndex + 1, pott);
 }
 
 async function fuehreRundenTransferAusAlsHost() {
@@ -472,7 +520,10 @@ async function fuehreRundenTransferAusAlsHost() {
   const raum = letzterOeffentlicherZustand;
   const runde = raum.aktuelleRunde;
   const gewinnerUid = runde.gewinnerSpielerId;
-  const beteiligteUids = Object.keys(runde.ausgespielteKarten);
+  // pottKarten enthaelt alle Karten aller Bockrunden-Stufen; ohne Gleichstand ist es genau
+  // eine Karte pro Teilnehmer:in (wie zuvor).
+  const pottKarten = runde.pottKarten || [];
+  const beteiligteUids = [...new Set(pottKarten.map(eintrag => eintrag.spielerId))];
 
   const schnappschuesse = await Promise.all(
     beteiligteUids.map(uid => db.ref(`geheime_karten/${code}/${uid}/karten`).once("value"))
@@ -482,8 +533,8 @@ async function fuehreRundenTransferAusAlsHost() {
   const gewonneneKarten = [];
   beteiligteUids.forEach((uid, i) => {
     const hand = (schnappschuesse[i].val() || []).slice();
-    const obersteKarte = hand.shift();
-    if (obersteKarte) gewonneneKarten.push(obersteKarte);
+    const anzahlAusPott = pottKarten.filter(eintrag => eintrag.spielerId === uid).length;
+    gewonneneKarten.push(...hand.splice(0, anzahlAusPott));
     updates[`geheime_karten/${code}/${uid}/karten`] = hand;
   });
   const gewinnerRestHand = updates[`geheime_karten/${code}/${gewinnerUid}/karten`] || [];

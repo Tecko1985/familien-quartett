@@ -152,8 +152,16 @@ function renderVergleich(zustand) {
       liste.appendChild(li);
     });
 
-  document.getElementById("vergleich-gewinner-text").textContent =
-    `${getSpielerName(zustand, runde.gewinnerSpielerId)} gewinnt die Runde!`;
+  const weiterBtn = document.getElementById("btn-vergleich-weiter");
+  if (!runde.gewinnerSpielerId) {
+    document.getElementById("vergleich-gewinner-text").textContent =
+      "Gleichstand! Die nächste Karte wird automatisch in derselben Kategorie verglichen …";
+    weiterBtn.style.display = "none";
+  } else {
+    document.getElementById("vergleich-gewinner-text").textContent =
+      `${getSpielerName(zustand, runde.gewinnerSpielerId)} gewinnt die Runde!`;
+    weiterBtn.style.display = "block";
+  }
 }
 
 function renderGameOver(zustand) {
