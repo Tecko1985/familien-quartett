@@ -23,6 +23,7 @@ const DECKGROESSE_LABEL = { klein: "5 Karten/Spieler:in", normal: "10 Karten/Spi
 let kvAusgewaehltesDeck = "familie";
 let kvBearbeiteteKarte = null;
 let kvNeuesFoto = undefined; // undefined = unveraendert, sonst Daten-URL des neuen Fotos
+let nachFamiliencodeAktion = null; // "bestenliste" | "kartenverwaltung"
 
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
@@ -358,7 +359,7 @@ document.getElementById("btn-test-spieler").addEventListener("click", () => {
   gameService.fuegeTestSpielerHinzu();
 });
 
-document.getElementById("btn-bestenliste-oeffnen").addEventListener("click", async () => {
+async function zeigeBestenliste() {
   const koerper = document.getElementById("bestenliste-koerper");
   const leerText = document.getElementById("bestenliste-leer");
   koerper.innerHTML = "";
@@ -391,9 +392,40 @@ document.getElementById("btn-bestenliste-oeffnen").addEventListener("click", asy
     tr.append(tdName, tdGespielt, tdGewonnen, tdProzent);
     koerper.appendChild(tr);
   });
+}
+
+function oeffneMitFamiliencode(aktion) {
+  if (gameService.getFamilienCode()) {
+    if (aktion === "bestenliste") zeigeBestenliste();
+    else ladeUndZeigeKartenverwaltung();
+    return;
+  }
+  nachFamiliencodeAktion = aktion;
+  document.getElementById("input-familiencode").value = "";
+  document.getElementById("familiencode-fehler").textContent = "";
+  showScreen("screen-familiencode-eingabe");
+}
+
+document.getElementById("btn-bestenliste-oeffnen").addEventListener("click", () => {
+  oeffneMitFamiliencode("bestenliste");
 });
 
 document.getElementById("btn-bestenliste-zurueck").addEventListener("click", () => {
+  showScreen("screen-start");
+});
+
+document.getElementById("btn-familiencode-bestaetigen").addEventListener("click", () => {
+  const code = document.getElementById("input-familiencode").value;
+  const ergebnis = gameService.setzeFamilienCode(code);
+  if (!ergebnis.erfolg) {
+    document.getElementById("familiencode-fehler").textContent = ergebnis.fehler;
+    return;
+  }
+  if (nachFamiliencodeAktion === "bestenliste") zeigeBestenliste();
+  else ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("btn-familiencode-zurueck").addEventListener("click", () => {
   showScreen("screen-start");
 });
 
@@ -425,7 +457,7 @@ document.getElementById("btn-spiel-abbrechen").addEventListener("click", () => {
 });
 
 document.getElementById("btn-kartenverwaltung-oeffnen").addEventListener("click", () => {
-  ladeUndZeigeKartenverwaltung();
+  oeffneMitFamiliencode("kartenverwaltung");
 });
 
 document.getElementById("kv-deck-familie").addEventListener("click", () => {

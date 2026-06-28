@@ -19,6 +19,39 @@ const GLEICHSTAND_VERZOEGERUNG_MS = 1800;
 const KARTEN_PRO_SPIELER_NACH_DECKGROESSE = { klein: 5, normal: 10, gross: null }; // null = ganzer Kartenpool
 const BESTENLISTE_PFAD = "bestenliste";
 const KARTEN_UEBERSTEUERUNGEN_PFAD = "kartenUebersteuerungen";
+const FAMILIENCODE_STORAGE_KEY = "familienquartett_familiencode";
+
+// Bestenliste und Kartenfotos sind anders als raeume/geheime_karten nicht an einen
+// einzelnen Spielraum gebunden, sondern dauerhaft. Ohne einen gemeinsamen Familien-Code
+// waeren sie fuer jede:n mit der App-URL lesbar (Klarnamen + Fotos). Der Code wird einmal
+// pro Geraet hinterlegt (localStorage) und ist Teil des Datenbankpfads, wirkt also wie ein
+// gemeinsames Passwort.
+let aktiverFamilienCode = null;
+try {
+  aktiverFamilienCode = localStorage.getItem(FAMILIENCODE_STORAGE_KEY);
+} catch (e) {
+  // unkritisch, falls localStorage nicht verfügbar ist
+}
+
+function pfadSichererCode(code) {
+  return (code || "").trim().replace(/[.#$\[\]/]/g, "_");
+}
+
+function getFamilienCode() {
+  return aktiverFamilienCode;
+}
+
+function setzeFamilienCode(code) {
+  const bereinigt = pfadSichererCode(code);
+  if (!bereinigt) return { erfolg: false, fehler: "Bitte einen Code eingeben." };
+  aktiverFamilienCode = bereinigt;
+  try {
+    localStorage.setItem(FAMILIENCODE_STORAGE_KEY, bereinigt);
+  } catch (e) {
+    // unkritisch
+  }
+  return { erfolg: true };
+}
 
 // Merged eine Basiskarte aus mock-data.js mit einer optionalen, in Firebase gespeicherten
 // Bearbeitung (Name/Rolle/Foto/einzelne Eigenschaftswerte). Ohne Ueberschreibung bleibt
@@ -42,13 +75,15 @@ function slugifyName(name) {
 // spieler-Objekt und "gewonnen" zusaetzlich fuer gewinnerUid. Mutiert das updates-Objekt,
 // damit die Statistik im selben atomaren db.ref().update() wie der Spielende-Zustand landet.
 function fuegeStatistikUpdatesHinzu(updates, spieler, gewinnerUid) {
+  if (!aktiverFamilienCode) return; // ohne Familien-Code wird keine Statistik gespeichert
   Object.keys(spieler).forEach(uid => {
     if (spieler[uid].istSimuliert) return;
     const slug = slugifyName(spieler[uid].name);
-    updates[`${BESTENLISTE_PFAD}/${slug}/name`] = spieler[uid].name;
-    updates[`${BESTENLISTE_PFAD}/${slug}/gespielt`] = firebase.database.ServerValue.increment(1);
+    const basis = `${BESTENLISTE_PFAD}/${aktiverFamilienCode}/${slug}`;
+    updates[`${basis}/name`] = spieler[uid].name;
+    updates[`${basis}/gespielt`] = firebase.database.ServerValue.increment(1);
     if (uid === gewinnerUid) {
-      updates[`${BESTENLISTE_PFAD}/${slug}/gewonnen`] = firebase.database.ServerValue.increment(1);
+      updates[`${basis}/gewonnen`] = firebase.database.ServerValue.increment(1);
     }
   });
 }
@@ -311,8 +346,9 @@ async function starteSpiel() {
   const uids = Object.keys(raum.spieler || {});
   if (uids.length < 2) return { erfolg: false, fehler: "Mindestens 2 Spieler nötig." };
 
-  const ueberschreibungenSnap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${raum.kartenSet}`).once("value");
-  const ueberschreibungen = ueberschreibungenSnap.val() || {};
+  const ueberschreibungen = aktiverFamilienCode
+    ? (await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${raum.kartenSet}`).once("value")).val() || {}
+    : {};
   const deck = getMockDeck(raum.kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
   const proSpieler = KARTEN_PRO_SPIELER_NACH_DECKGROESSE[raum.deckgroesse || "normal"];
   const benoetigteAnzahl = proSpieler ? Math.min(proSpieler * uids.length, deck.length) : deck.length;
@@ -408,7 +444,8 @@ async function neuesSpiel() {
 
 async function ladeBestenliste() {
   await authBereit;
-  const snap = await db.ref(BESTENLISTE_PFAD).once("value");
+  if (!aktiverFamilienCode) return [];
+  const snap = await db.ref(`${BESTENLISTE_PFAD}/${aktiverFamilienCode}`).once("value");
   const daten = snap.val() || {};
   return Object.values(daten)
     .map(eintrag => {
@@ -428,20 +465,23 @@ async function ladeBestenliste() {
 
 async function ladeKartenZurBearbeitung(kartenSet) {
   await authBereit;
-  const snap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}`).once("value");
+  if (!aktiverFamilienCode) return getMockDeck(kartenSet);
+  const snap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}`).once("value");
   const ueberschreibungen = snap.val() || {};
   return getMockDeck(kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
 }
 
 async function speichereKartenUebersteuerung(kartenSet, kartenId, daten) {
+  if (!aktiverFamilienCode) return { erfolg: false, fehler: "Kein Familien-Code gesetzt." };
   await authBereit;
-  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}/${kartenId}`).set(daten);
+  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}/${kartenId}`).set(daten);
   return { erfolg: true };
 }
 
 async function setzeKarteZurueck(kartenSet, kartenId) {
+  if (!aktiverFamilienCode) return { erfolg: false };
   await authBereit;
-  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}/${kartenId}`).remove();
+  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}/${kartenId}`).remove();
   return { erfolg: true };
 }
 
@@ -741,5 +781,7 @@ const gameService = {
   ladeBestenliste,
   ladeKartenZurBearbeitung,
   speichereKartenUebersteuerung,
-  setzeKarteZurueck
+  setzeKarteZurueck,
+  getFamilienCode,
+  setzeFamilienCode
 };
