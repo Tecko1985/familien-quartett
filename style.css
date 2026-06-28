@@ -79,6 +79,9 @@ h1, h2 { margin: 0 0 12px; }
 }
 .checkbox-zeile input { width: 18px; height: 18px; }
 
+.deckgroesse-gruppe { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; text-align: left; }
+.deckgroesse-label { font-size: 13px; font-weight: 600; color: var(--muted); margin-top: 6px; }
+
 .trenner {
   display: flex;
   align-items: center;

@@ -16,6 +16,9 @@ const PHASEN_MIT_ABBRUCH_BUTTON = ["amZug", "warteAufAndere", "vergleich"];
 let ausstehenderModus = null; // "erstellen" | "beitreten"
 let raumcodeEingabe = "";
 let ausstehenderKartenSet = "familie";
+let ausstehenderDeckgroesse = "normal";
+
+const DECKGROESSE_LABEL = { klein: "5 Karten/Spieler:in", normal: "10 Karten/Spieler:in", gross: "Maximum aus dem Kartenpool" };
 
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
@@ -99,8 +102,9 @@ function renderLobby(zustand) {
   document.getElementById("btn-spiel-starten").style.display = istHost ? "block" : "none";
   document.getElementById("btn-spiel-starten").disabled = zustand.spieler.length < 2;
   document.getElementById("lobby-warte-hinweis").style.display = istHost ? "none" : "block";
-  document.getElementById("lobby-modus").textContent =
-    zustand.kartenSet === "auto" ? "🚗 Auto-Quartett" : "🎴 Familien-Quartett";
+  const modusLabel = zustand.kartenSet === "auto" ? "🚗 Auto-Quartett" : "🎴 Familien-Quartett";
+  const groesseLabel = DECKGROESSE_LABEL[zustand.deckgroesse] || DECKGROESSE_LABEL.normal;
+  document.getElementById("lobby-modus").textContent = `${modusLabel} · ${groesseLabel}`;
 }
 
 function renderSpiel(zustand) {
@@ -192,6 +196,8 @@ function render(zustand) {
 document.getElementById("btn-raum-erstellen").addEventListener("click", () => {
   ausstehenderModus = "erstellen";
   ausstehenderKartenSet = document.getElementById("checkbox-auto-modus").checked ? "auto" : "familie";
+  const deckgroesseInput = document.querySelector('input[name="deckgroesse"]:checked');
+  ausstehenderDeckgroesse = deckgroesseInput ? deckgroesseInput.value : "normal";
   document.getElementById("name-eingabe-titel").textContent = "Wie heißt du?";
   document.getElementById("input-spielername").value = "";
   document.getElementById("name-eingabe-fehler").textContent = "";
@@ -221,7 +227,7 @@ document.getElementById("btn-name-bestaetigen").addEventListener("click", async 
   const name = document.getElementById("input-spielername").value.trim();
   const fehlerEl = document.getElementById("name-eingabe-fehler");
   const ergebnis = ausstehenderModus === "erstellen"
-    ? await gameService.erstelleRaum(name, ausstehenderKartenSet)
+    ? await gameService.erstelleRaum(name, ausstehenderKartenSet, ausstehenderDeckgroesse)
     : await gameService.tritRaumBei(raumcodeEingabe, name);
 
   if (!ergebnis.erfolg) {

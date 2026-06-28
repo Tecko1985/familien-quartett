@@ -15,6 +15,7 @@ const TEST_NAMEN_POOL = ["Tom", "Lena", "Max", "Sara", "Jonas", "Mia", "Paul"];
 const SPIELER_FARBEN = ["#1a56a0", "#057a55", "#c9941f", "#9333ea", "#dc2626", "#0891b2", "#db2777", "#ea580c"];
 const MAX_SPIELER = 8;
 const AUTO_PLAY_VERZOEGERUNG_MS = 1400;
+const KARTEN_PRO_SPIELER_NACH_DECKGROESSE = { klein: 5, normal: 10, gross: null }; // null = ganzer Kartenpool
 
 let eigeneUid = null;
 let aktuellerRaumCode = null;
@@ -62,6 +63,7 @@ function zustandOhneRaum() {
     amZugSpielerId: null,
     phase: "start",
     kartenSet: "familie",
+    deckgroesse: "normal",
     eigeneKarten: [],
     aktuelleRunde: { gewaehlteKategorie: null, ausgespielteKarten: [], gewinnerSpielerId: null },
     siegerSpielerId: null,
@@ -100,6 +102,7 @@ function getZustand() {
     amZugSpielerId: raum.amZugSpielerId || null,
     phase: phaseFuerUi,
     kartenSet: raum.kartenSet || "familie",
+    deckgroesse: raum.deckgroesse || "normal",
     eigeneKarten: letzteEigeneKarten,
     aktuelleRunde: {
       gewaehlteKategorie: raum.aktuelleRunde ? raum.aktuelleRunde.gewaehlteKategorie : null,
@@ -153,7 +156,7 @@ function betretRaumLokal(code) {
 
 // --- Öffentliche API ---
 
-async function erstelleRaum(spielerName, kartenSet) {
+async function erstelleRaum(spielerName, kartenSet, deckgroesse) {
   if (!spielerName || !spielerName.trim()) {
     return { erfolg: false, fehler: "Bitte einen Namen eingeben." };
   }
@@ -164,6 +167,7 @@ async function erstelleRaum(spielerName, kartenSet) {
     hostId: eigeneUid,
     phase: "lobby",
     kartenSet: kartenSet === "auto" ? "auto" : "familie",
+    deckgroesse: KARTEN_PRO_SPIELER_NACH_DECKGROESSE.hasOwnProperty(deckgroesse) ? deckgroesse : "normal",
     amZugSpielerId: null,
     siegerSpielerId: null,
     naechsteRundeAngefordert: null,
@@ -251,7 +255,10 @@ async function starteSpiel() {
   const uids = Object.keys(raum.spieler || {});
   if (uids.length < 2) return { erfolg: false, fehler: "Mindestens 2 Spieler nötig." };
 
-  const gemischt = mischeArray(getMockDeck(raum.kartenSet));
+  const deck = getMockDeck(raum.kartenSet);
+  const proSpieler = KARTEN_PRO_SPIELER_NACH_DECKGROESSE[raum.deckgroesse || "normal"];
+  const benoetigteAnzahl = proSpieler ? Math.min(proSpieler * uids.length, deck.length) : deck.length;
+  const gemischt = mischeArray(deck).slice(0, benoetigteAnzahl);
   const haende = {};
   uids.forEach(uid => (haende[uid] = []));
   gemischt.forEach((karte, index) => {
