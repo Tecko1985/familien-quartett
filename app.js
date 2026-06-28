@@ -621,11 +621,12 @@ document.getElementById("kb-foto-input").addEventListener("change", e => {
 document.getElementById("btn-kb-speichern").addEventListener("click", async () => {
   const karte = kvBearbeiteteKarte;
   if (!karte) return;
+  const istFamilie = kvAusgewaehltesDeck === "familie";
   const name = document.getElementById("kb-name").value.trim();
-  const rolle = document.getElementById("kb-rolle").value.trim();
+  const rolle = istFamilie ? karte.rolle : document.getElementById("kb-rolle").value.trim();
   const fehlerEl = document.getElementById("kb-fehler");
-  if (!name || !rolle) {
-    fehlerEl.textContent = "Bitte Name und Rolle ausfüllen.";
+  if (!name || (!istFamilie && !rolle)) {
+    fehlerEl.textContent = istFamilie ? "Bitte einen Namen eingeben." : "Bitte Name und Rolle ausfüllen.";
     return;
   }
   const eigenschaften = {};
