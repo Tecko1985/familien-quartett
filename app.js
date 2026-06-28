@@ -248,7 +248,42 @@ function renderKartenverwaltungButton(zustand) {
   btn.style.display = PHASEN_MIT_ABBRUCH_BUTTON.includes(zustand.phase) ? "none" : "inline-block";
 }
 
+// Browser drosseln Timer/Firebase-Listener stark, sobald der Bildschirm sperrt
+// (besonders auf dem Gastgeber-Handy spuerbar, da dort die gesamte Spiellogik laeuft).
+// Wake Lock haelt den Bildschirm waehrend einer aktiven Partie wach.
+let bildschirmWakeLock = null;
+
+async function sichereBildschirmWach() {
+  if (!("wakeLock" in navigator) || bildschirmWakeLock) return;
+  try {
+    bildschirmWakeLock = await navigator.wakeLock.request("screen");
+    bildschirmWakeLock.addEventListener("release", () => {
+      bildschirmWakeLock = null;
+    });
+  } catch (e) {
+    // unkritisch, z.B. wenn der Tab gerade nicht sichtbar ist
+  }
+}
+
+function gibBildschirmFrei() {
+  if (bildschirmWakeLock) {
+    bildschirmWakeLock.release().catch(() => {});
+    bildschirmWakeLock = null;
+  }
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && gameService.getZustand().phase !== "start") {
+    sichereBildschirmWach();
+  }
+});
+
 function render(zustand) {
+  if (zustand.phase === "start") {
+    gibBildschirmFrei();
+  } else {
+    sichereBildschirmWach();
+  }
   showScreen(SCREEN_FUER_PHASE[zustand.phase] || "screen-start");
   renderAbbrechenButton(zustand);
   renderKartenverwaltungButton(zustand);
