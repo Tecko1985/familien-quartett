@@ -295,6 +295,30 @@ async function bestaetigeWeiter() {
   return { erfolg: true };
 }
 
+async function verlasseSpiel() {
+  const raum = letzterOeffentlicherZustand;
+  const code = aktuellerRaumCode;
+  if (!raum || !code) return { erfolg: false };
+
+  if (raum.hostId === eigeneUid) {
+    // Gastgeber bricht das Spiel für alle ab.
+    await db.ref(`raeume/${code}/phase`).set("abgebrochen");
+  } else {
+    // Bitte den Gastgeber, die eigenen Karten zu verteilen, sobald es sicher ist.
+    await db.ref(`raeume/${code}/austrittAnfrageUid`).set(eigeneUid);
+  }
+
+  loeseListenerAb();
+  aktuellerRaumCode = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch (e) {
+    // unkritisch
+  }
+  if (listener) listener(zustandOhneRaum());
+  return { erfolg: true };
+}
+
 async function neuesSpiel() {
   const raum = letzterOeffentlicherZustand;
   const code = aktuellerRaumCode;
@@ -345,6 +369,63 @@ function pruefeUndLoeseAlsHostAus() {
   }
   if (raum.phase === "amZug" && raum.amZugSpielerId && raum.spieler[raum.amZugSpielerId] && raum.spieler[raum.amZugSpielerId].istSimuliert) {
     planeBotZugFallsNoetig(raum.amZugSpielerId);
+  }
+  // Eine Karten-Runde ist nie "in der Luft", solange phase === "amZug" ist –
+  // genau dann ist es sicher, eine ausstehende Austrittsanfrage zu verarbeiten.
+  if (raum.phase === "amZug" && raum.austrittAnfrageUid && raum.spieler[raum.austrittAnfrageUid]) {
+    entferneSpielerUndVerteileKartenAlsHost(raum.austrittAnfrageUid);
+  }
+}
+
+let entfernungLaeuft = false;
+
+async function entferneSpielerUndVerteileKartenAlsHost(verlassenerUid) {
+  if (entfernungLaeuft) return;
+  entfernungLaeuft = true;
+  try {
+    const code = aktuellerRaumCode;
+    const raum = letzterOeffentlicherZustand;
+
+    const verlasseneHandSnap = await db.ref(`geheime_karten/${code}/${verlassenerUid}/karten`).once("value");
+    const verlasseneKarten = verlasseneHandSnap.val() || [];
+
+    const verbleibendeUids = Object.keys(raum.spieler).filter(
+      uid => uid !== verlassenerUid && !raum.spieler[uid].istAusgeschieden
+    );
+
+    const updates = {};
+
+    if (verbleibendeUids.length === 0) {
+      updates[`raeume/${code}/phase`] = "abgebrochen";
+    } else {
+      const schnappschuesse = await Promise.all(
+        verbleibendeUids.map(uid => db.ref(`geheime_karten/${code}/${uid}/karten`).once("value"))
+      );
+      verbleibendeUids.forEach((uid, i) => {
+        const eigeneHand = (schnappschuesse[i].val() || []).slice();
+        // Zu gleichen Teilen verteilen: Karte i des Verlassenen geht an Spieler (i % Anzahl).
+        const anteil = verlasseneKarten.filter((_, kartenIndex) => kartenIndex % verbleibendeUids.length === i);
+        const neueHand = eigeneHand.concat(anteil);
+        updates[`geheime_karten/${code}/${uid}/karten`] = neueHand;
+        updates[`raeume/${code}/spieler/${uid}/kartenAnzahl`] = neueHand.length;
+      });
+
+      if (verbleibendeUids.length === 1) {
+        updates[`raeume/${code}/phase`] = "beendet";
+        updates[`raeume/${code}/siegerSpielerId`] = verbleibendeUids[0];
+        updates[`raeume/${code}/amZugSpielerId`] = null;
+      } else if (raum.amZugSpielerId === verlassenerUid) {
+        updates[`raeume/${code}/amZugSpielerId`] = verbleibendeUids[0];
+      }
+    }
+
+    updates[`raeume/${code}/spieler/${verlassenerUid}`] = null;
+    updates[`geheime_karten/${code}/${verlassenerUid}`] = null;
+    updates[`raeume/${code}/austrittAnfrageUid`] = null;
+
+    await db.ref().update(updates);
+  } finally {
+    entfernungLaeuft = false;
   }
 }
 
@@ -457,6 +538,7 @@ const gameService = {
   starteSpiel,
   waehleKategorie,
   bestaetigeWeiter,
+  verlasseSpiel,
   neuesSpiel,
   getZustand,
   onZustandsAenderung

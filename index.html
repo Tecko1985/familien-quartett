@@ -13,6 +13,7 @@
 
 <header class="kopfzeile">
   <span class="kopfzeile-titel">🎴 Familien-Quartett</span>
+  <button class="btn-abbrechen" id="btn-spiel-abbrechen" style="display:none">Abbrechen</button>
   <span class="kopfzeile-status" id="sync-status">● lokal (Demo)</span>
 </header>
 
@@ -104,6 +105,15 @@
       <p class="sieger-name" id="game-over-sieger"></p>
       <ol class="endstand-liste" id="game-over-endstand"></ol>
       <button class="btn btn-primary btn-grow" id="btn-neues-spiel">Neues Spiel</button>
+    </div>
+  </section>
+
+  <!-- 7: Abgebrochen -->
+  <section class="screen" id="screen-abgebrochen">
+    <div class="screen-inhalt zentriert">
+      <h1 class="sieger-titel">🚫 Spiel abgebrochen</h1>
+      <p class="hinweis-text" id="abgebrochen-text">Der Gastgeber hat das Spiel beendet.</p>
+      <button class="btn btn-primary btn-grow" id="btn-abbruch-zurueck">Zurück zum Start</button>
     </div>
   </section>
 

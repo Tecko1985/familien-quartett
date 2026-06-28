@@ -7,8 +7,11 @@ const SCREEN_FUER_PHASE = {
   amZug: "screen-spiel",
   warteAufAndere: "screen-spiel",
   vergleich: "screen-vergleich",
-  beendet: "screen-game-over"
+  beendet: "screen-game-over",
+  abgebrochen: "screen-abgebrochen"
 };
+
+const PHASEN_MIT_ABBRUCH_BUTTON = ["amZug", "warteAufAndere", "vergleich"];
 
 let ausstehenderModus = null; // "erstellen" | "beitreten"
 let raumcodeEingabe = "";
@@ -165,8 +168,19 @@ function renderGameOver(zustand) {
     });
 }
 
+function renderAbbrechenButton(zustand) {
+  const btn = document.getElementById("btn-spiel-abbrechen");
+  const sichtbar = PHASEN_MIT_ABBRUCH_BUTTON.includes(zustand.phase);
+  btn.style.display = sichtbar ? "inline-block" : "none";
+  if (sichtbar) {
+    const eigener = getEigenerSpieler(zustand);
+    btn.textContent = eigener && eigener.istHost ? "Spiel abbrechen" : "Spiel verlassen";
+  }
+}
+
 function render(zustand) {
   showScreen(SCREEN_FUER_PHASE[zustand.phase] || "screen-start");
+  renderAbbrechenButton(zustand);
   if (zustand.phase === "lobby") renderLobby(zustand);
   if (zustand.phase === "amZug" || zustand.phase === "warteAufAndere") renderSpiel(zustand);
   if (zustand.phase === "vergleich") renderVergleich(zustand);
@@ -233,6 +247,21 @@ document.getElementById("btn-vergleich-weiter").addEventListener("click", () => 
 
 document.getElementById("btn-neues-spiel").addEventListener("click", () => {
   gameService.neuesSpiel();
+});
+
+document.getElementById("btn-abbruch-zurueck").addEventListener("click", () => {
+  gameService.neuesSpiel();
+});
+
+document.getElementById("btn-spiel-abbrechen").addEventListener("click", () => {
+  const zustand = gameService.getZustand();
+  const eigener = getEigenerSpieler(zustand);
+  const istHost = !!(eigener && eigener.istHost);
+  const frage = istHost
+    ? "Spiel für alle Mitspieler:innen abbrechen?"
+    : "Spiel verlassen? Deine Karten werden gleichmäßig an die übrigen Mitspieler:innen verteilt.";
+  if (!window.confirm(frage)) return;
+  gameService.verlasseSpiel();
 });
 
 gameService.onZustandsAenderung(render);
