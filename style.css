@@ -285,8 +285,31 @@ h1, h2 { margin: 0 0 12px; }
   background: var(--avatar-farbe, var(--primary));
   overflow: hidden;
 }
-.karte-foto img { width: 100%; height: 100%; object-fit: cover; }
-.karte-foto img.avatar-fallback { width: 40%; height: 40%; object-fit: contain; }
+.karte-foto img { width: 100%; height: 100%; object-fit: contain; cursor: zoom-in; }
+.karte-foto img.avatar-fallback { width: 40%; height: 40%; object-fit: contain; cursor: default; }
+
+.kv-thumb img:not(.avatar-fallback),
+.kb-foto-vorschau:not([src*="avatar-placeholder"]) { cursor: zoom-in; }
+
+.foto-lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.88);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: zoom-out;
+}
+.foto-lightbox.aktiv { display: flex; }
+.foto-lightbox img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
 
 .karte-eigenschaften { list-style: none; margin: 0; padding: 8px 0; position: relative; z-index: 1; }
 .eigenschaft {

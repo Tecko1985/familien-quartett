@@ -63,6 +63,18 @@ function avatarInitiale(name) {
   return (name || "?").trim().charAt(0).toUpperCase();
 }
 
+// --- Foto-Lightbox (Großansicht per Klick) ---
+
+function oeffneFotoLightbox(src) {
+  if (!src) return;
+  document.getElementById("foto-lightbox-img").src = src;
+  document.getElementById("foto-lightbox").classList.add("aktiv");
+}
+
+document.getElementById("foto-lightbox").addEventListener("click", () => {
+  document.getElementById("foto-lightbox").classList.remove("aktiv");
+});
+
 // --- Karten-Rendering ---
 
 function erzeugeKartenElement(karte, { waehlbar, kartenSet }, kategorien) {
@@ -99,6 +111,10 @@ function erzeugeKartenElement(karte, { waehlbar, kartenSet }, kategorien) {
     wrapper.querySelectorAll(".eigenschaft").forEach(li => {
       li.addEventListener("click", () => gameService.waehleKategorie(li.dataset.kategorie));
     });
+  }
+
+  if (karte.foto) {
+    wrapper.querySelector(".karte-foto img").addEventListener("click", () => oeffneFotoLightbox(karte.foto));
   }
 
   return wrapper;
@@ -255,6 +271,10 @@ function erzeugeKvEintrag(karte) {
   img.alt = "";
   if (karte.foto) {
     img.src = karte.foto;
+    img.addEventListener("click", e => {
+      e.stopPropagation();
+      oeffneFotoLightbox(karte.foto);
+    });
   } else {
     img.src = "avatar-placeholder.svg";
     img.className = "avatar-fallback";
@@ -311,7 +331,9 @@ async function oeffneKartenBearbeitung(karte) {
   document.getElementById("kb-name").value = karte.name;
   document.getElementById("kb-rolle").value = karte.rolle;
   document.getElementById("kb-rolle-zeile").style.display = kvAusgewaehltesDeck === "familie" ? "none" : "block";
-  document.getElementById("kb-foto-vorschau").src = karte.foto || "avatar-placeholder.svg";
+  const vorschau = document.getElementById("kb-foto-vorschau");
+  vorschau.src = karte.foto || "avatar-placeholder.svg";
+  vorschau.onclick = () => oeffneFotoLightbox(vorschau.src);
 
   let kategorien;
   try {
