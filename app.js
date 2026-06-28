@@ -262,6 +262,45 @@ document.getElementById("btn-test-spieler").addEventListener("click", () => {
   gameService.fuegeTestSpielerHinzu();
 });
 
+document.getElementById("btn-bestenliste-oeffnen").addEventListener("click", async () => {
+  const koerper = document.getElementById("bestenliste-koerper");
+  const leerText = document.getElementById("bestenliste-leer");
+  koerper.innerHTML = "";
+  leerText.style.display = "none";
+  showScreen("screen-bestenliste");
+
+  let eintraege;
+  try {
+    eintraege = await gameService.ladeBestenliste();
+  } catch (e) {
+    leerText.textContent = "Bestenliste konnte nicht geladen werden.";
+    leerText.style.display = "block";
+    return;
+  }
+  if (eintraege.length === 0) {
+    leerText.textContent = "Noch keine beendeten Spiele.";
+    leerText.style.display = "block";
+    return;
+  }
+  eintraege.forEach(eintrag => {
+    const tr = document.createElement("tr");
+    const tdName = document.createElement("td");
+    tdName.textContent = eintrag.name;
+    const tdGespielt = document.createElement("td");
+    tdGespielt.textContent = eintrag.gespielt;
+    const tdGewonnen = document.createElement("td");
+    tdGewonnen.textContent = eintrag.gewonnen;
+    const tdProzent = document.createElement("td");
+    tdProzent.textContent = `${eintrag.prozent}%`;
+    tr.append(tdName, tdGespielt, tdGewonnen, tdProzent);
+    koerper.appendChild(tr);
+  });
+});
+
+document.getElementById("btn-bestenliste-zurueck").addEventListener("click", () => {
+  showScreen("screen-start");
+});
+
 document.getElementById("btn-spiel-starten").addEventListener("click", () => {
   gameService.starteSpiel();
 });

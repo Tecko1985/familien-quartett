@@ -57,6 +57,8 @@
       </div>
 
       <p class="hinweis-text" id="start-fehler"></p>
+
+      <button class="btn btn-link" id="btn-bestenliste-oeffnen">🏆 Bestenliste</button>
     </div>
   </section>
 
@@ -131,6 +133,21 @@
       <h1 class="sieger-titel">🚫 Spiel abgebrochen</h1>
       <p class="hinweis-text" id="abgebrochen-text">Der Gastgeber hat das Spiel beendet.</p>
       <button class="btn btn-primary btn-grow" id="btn-abbruch-zurueck">Zurück zum Start</button>
+    </div>
+  </section>
+
+  <!-- 8: Bestenliste -->
+  <section class="screen" id="screen-bestenliste">
+    <div class="screen-inhalt">
+      <h2>🏆 Bestenliste</h2>
+      <table class="bestenliste-tabelle">
+        <thead>
+          <tr><th>Name</th><th>Gespielt</th><th>Gewonnen</th><th>%</th></tr>
+        </thead>
+        <tbody id="bestenliste-koerper"></tbody>
+      </table>
+      <p class="hinweis-text" id="bestenliste-leer" style="display:none">Noch keine beendeten Spiele.</p>
+      <button class="btn btn-link" id="btn-bestenliste-zurueck">Zurück</button>
     </div>
   </section>
 

@@ -127,6 +127,10 @@ h1, h2 { margin: 0 0 12px; }
 
 .lobby-modus { text-align: center; color: var(--muted); font-size: 14px; margin: 0 0 16px; }
 
+.bestenliste-tabelle { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 14px; }
+.bestenliste-tabelle th, .bestenliste-tabelle td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+.bestenliste-tabelle th:not(:first-child), .bestenliste-tabelle td:not(:first-child) { text-align: right; }
+
 /* Lobby */
 .raumcode-box {
   display: flex;

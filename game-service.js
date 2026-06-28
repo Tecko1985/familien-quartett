@@ -17,6 +17,26 @@ const MAX_SPIELER = 8;
 const AUTO_PLAY_VERZOEGERUNG_MS = 1400;
 const GLEICHSTAND_VERZOEGERUNG_MS = 1800;
 const KARTEN_PRO_SPIELER_NACH_DECKGROESSE = { klein: 5, normal: 10, gross: null }; // null = ganzer Kartenpool
+const BESTENLISTE_PFAD = "bestenliste";
+
+function slugifyName(name) {
+  return (name || "").trim().toLowerCase().replace(/[.#$\[\]/]/g, "_") || "unbekannt";
+}
+
+// Erhoeht "gespielt" fuer alle realen (nicht simulierten) Spieler:innen im uebergebenen
+// spieler-Objekt und "gewonnen" zusaetzlich fuer gewinnerUid. Mutiert das updates-Objekt,
+// damit die Statistik im selben atomaren db.ref().update() wie der Spielende-Zustand landet.
+function fuegeStatistikUpdatesHinzu(updates, spieler, gewinnerUid) {
+  Object.keys(spieler).forEach(uid => {
+    if (spieler[uid].istSimuliert) return;
+    const slug = slugifyName(spieler[uid].name);
+    updates[`${BESTENLISTE_PFAD}/${slug}/name`] = spieler[uid].name;
+    updates[`${BESTENLISTE_PFAD}/${slug}/gespielt`] = firebase.database.ServerValue.increment(1);
+    if (uid === gewinnerUid) {
+      updates[`${BESTENLISTE_PFAD}/${slug}/gewonnen`] = firebase.database.ServerValue.increment(1);
+    }
+  });
+}
 
 let eigeneUid = null;
 let aktuellerRaumCode = null;
@@ -369,6 +389,24 @@ async function neuesSpiel() {
   return { erfolg: true };
 }
 
+async function ladeBestenliste() {
+  await authBereit;
+  const snap = await db.ref(BESTENLISTE_PFAD).once("value");
+  const daten = snap.val() || {};
+  return Object.values(daten)
+    .map(eintrag => {
+      const gespielt = eintrag.gespielt || 0;
+      const gewonnen = eintrag.gewonnen || 0;
+      return {
+        name: eintrag.name || "?",
+        gespielt,
+        gewonnen,
+        prozent: gespielt > 0 ? Math.round((gewonnen / gespielt) * 100) : 0
+      };
+    })
+    .sort((a, b) => b.prozent - a.prozent || b.gewonnen - a.gewonnen);
+}
+
 function onZustandsAenderung(callback) {
   listener = callback;
   let gespeicherterCode = null;
@@ -478,6 +516,9 @@ async function entferneSpielerUndVerteileKartenAlsHost(verlassenerUid) {
         updates[`raeume/${code}/phase`] = "beendet";
         updates[`raeume/${code}/siegerSpielerId`] = verbleibendeUids[0];
         updates[`raeume/${code}/amZugSpielerId`] = null;
+        const spielerOhneVerlassenen = { ...raum.spieler };
+        delete spielerOhneVerlassenen[verlassenerUid];
+        fuegeStatistikUpdatesHinzu(updates, spielerOhneVerlassenen, verbleibendeUids[0]);
       } else if (raum.amZugSpielerId === verlassenerUid) {
         updates[`raeume/${code}/amZugSpielerId`] = verbleibendeUids[0];
       }
@@ -615,9 +656,11 @@ async function fuehreRundenTransferAusAlsHost() {
   });
 
   if (nochAktiveAnzahl <= 1) {
+    const siegerUid = letzterAktiverUid || gewinnerUid;
     updates[`raeume/${code}/phase`] = "beendet";
-    updates[`raeume/${code}/siegerSpielerId`] = letzterAktiverUid || gewinnerUid;
+    updates[`raeume/${code}/siegerSpielerId`] = siegerUid;
     updates[`raeume/${code}/amZugSpielerId`] = null;
+    fuegeStatistikUpdatesHinzu(updates, raum.spieler, siegerUid);
   } else {
     updates[`raeume/${code}/phase`] = "amZug";
     updates[`raeume/${code}/amZugSpielerId`] = gewinnerUid;
@@ -656,5 +699,6 @@ const gameService = {
   verlasseSpiel,
   neuesSpiel,
   getZustand,
-  onZustandsAenderung
+  onZustandsAenderung,
+  ladeBestenliste
 };
