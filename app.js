@@ -335,6 +335,12 @@ async function oeffneKartenBearbeitung(karte) {
   vorschau.src = karte.foto || "avatar-placeholder.svg";
   vorschau.onclick = () => oeffneFotoLightbox(vorschau.src);
 
+  const istBenutzerdefiniert = karte.id.startsWith("custom-");
+  document.getElementById("kb-titel").textContent = karte.istNeu ? "Neue Karte anlegen" : "Karte bearbeiten";
+  const zuruecksetzenBtn = document.getElementById("btn-kb-zuruecksetzen");
+  zuruecksetzenBtn.style.display = karte.istNeu ? "none" : "block";
+  zuruecksetzenBtn.textContent = istBenutzerdefiniert ? "Karte löschen" : "Auf Original zurücksetzen";
+
   let kategorien;
   try {
     kategorien = await gameService.ladeKategorienZurBearbeitung(kvAusgewaehltesDeck);
@@ -352,11 +358,25 @@ async function oeffneKartenBearbeitung(karte) {
     input.type = "number";
     input.className = "eingabe";
     input.dataset.kategorie = schluessel;
-    input.value = karte.eigenschaften[schluessel];
+    input.value = karte.eigenschaften[schluessel] !== undefined ? karte.eigenschaften[schluessel] : 50;
     container.append(label, input);
   });
 
   showScreen("screen-karte-bearbeiten");
+}
+
+async function oeffneNeueKartenErstellung() {
+  const farben = ["#1a56a0", "#057a55", "#c9941f", "#9333ea", "#dc2626", "#0891b2", "#db2777", "#ea580c"];
+  const karte = {
+    id: "custom-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    name: "",
+    rolle: "",
+    foto: null,
+    avatarFarbe: farben[Math.floor(Math.random() * farben.length)],
+    eigenschaften: {},
+    istNeu: true
+  };
+  await oeffneKartenBearbeitung(karte);
 }
 
 // --- Kriterien bearbeiten (Label + Icon je Eigenschaft) ---
@@ -586,6 +606,10 @@ document.getElementById("btn-kriterien-oeffnen").addEventListener("click", () =>
   ladeUndZeigeKriterienBearbeitung();
 });
 
+document.getElementById("btn-kv-neue-karte").addEventListener("click", () => {
+  oeffneNeueKartenErstellung();
+});
+
 document.getElementById("btn-kr-zurueck").addEventListener("click", () => {
   showScreen("screen-kartenverwaltung");
 });
@@ -674,6 +698,8 @@ document.getElementById("btn-kb-speichern").addEventListener("click", async () =
 document.getElementById("btn-kb-zuruecksetzen").addEventListener("click", async () => {
   const karte = kvBearbeiteteKarte;
   if (!karte) return;
+  const istBenutzerdefiniert = karte.id.startsWith("custom-");
+  if (istBenutzerdefiniert && !window.confirm("Diese Karte wirklich endgültig löschen?")) return;
   try {
     await gameService.setzeKarteZurueck(kvAusgewaehltesDeck, karte.id);
   } catch (e) {

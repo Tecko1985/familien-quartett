@@ -77,6 +77,29 @@ function wendeUebersteuerungAn(karte, ueberschreibung) {
   };
 }
 
+function baueKarteAusUebersteuerung(id, daten, index) {
+  return {
+    id,
+    name: daten.name || "Unbenannt",
+    rolle: daten.rolle || "",
+    foto: daten.foto || null,
+    avatarFarbe: SPIELER_FARBEN[index % SPIELER_FARBEN.length],
+    eigenschaften: daten.eigenschaften || {}
+  };
+}
+
+// Basisdeck (mock-data.js) gemergt mit Bearbeitungen + komplett neu angelegten Karten,
+// die nur als Ueberschreibung existieren (keine Entsprechung im Basisdeck).
+function holeVollstaendigesDeck(kartenSet, ueberschreibungen) {
+  const basis = getMockDeck(kartenSet);
+  const basisIds = new Set(basis.map(karte => karte.id));
+  const basisDeck = basis.map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
+  const neueKarten = Object.keys(ueberschreibungen)
+    .filter(id => !basisIds.has(id))
+    .map((id, index) => baueKarteAusUebersteuerung(id, ueberschreibungen[id], index));
+  return basisDeck.concat(neueKarten);
+}
+
 function slugifyName(name) {
   return (name || "").trim().toLowerCase().replace(/[.#$\[\]/]/g, "_") || "unbekannt";
 }
@@ -359,10 +382,16 @@ async function starteSpiel() {
   const ueberschreibungen = aktiverFamilienCode
     ? (await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${raum.kartenSet}`).once("value")).val() || {}
     : {};
-  const deck = getMockDeck(raum.kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
+  const deck = holeVollstaendigesDeck(raum.kartenSet, ueberschreibungen);
+  // Personalisierte Karten (eigene Fotos/Namen, inkl. komplett neu angelegter Karten)
+  // sollen nie durch die Zufallsauswahl herausfallen, wenn die Deckgroesse kleiner
+  // als der gesamte Kartenpool ist.
+  const personalisierteIds = new Set(Object.keys(ueberschreibungen));
+  const personalisierteKarten = mischeArray(deck.filter(karte => personalisierteIds.has(karte.id)));
+  const uebrigeKarten = mischeArray(deck.filter(karte => !personalisierteIds.has(karte.id)));
   const proSpieler = KARTEN_PRO_SPIELER_NACH_DECKGROESSE[raum.deckgroesse || "normal"];
   const benoetigteAnzahl = proSpieler ? Math.min(proSpieler * uids.length, deck.length) : deck.length;
-  const gemischt = mischeArray(deck).slice(0, benoetigteAnzahl);
+  const gemischt = mischeArray(personalisierteKarten.concat(uebrigeKarten).slice(0, benoetigteAnzahl));
   const haende = {};
   uids.forEach(uid => (haende[uid] = []));
   gemischt.forEach((karte, index) => {
@@ -478,7 +507,7 @@ async function ladeKartenZurBearbeitung(kartenSet) {
   if (!aktiverFamilienCode) return getMockDeck(kartenSet);
   const snap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${aktiverFamilienCode}/${kartenSet}`).once("value");
   const ueberschreibungen = snap.val() || {};
-  return getMockDeck(kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
+  return holeVollstaendigesDeck(kartenSet, ueberschreibungen);
 }
 
 async function speichereKartenUebersteuerung(kartenSet, kartenId, daten) {
