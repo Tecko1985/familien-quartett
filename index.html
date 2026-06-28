@@ -15,6 +15,7 @@
   <span class="kopfzeile-titel">🎴 Familien-Quartett</span>
   <button class="btn-abbrechen" id="btn-spiel-abbrechen" style="display:none">Abbrechen</button>
   <span class="kopfzeile-status" id="sync-status">● lokal (Demo)</span>
+  <button class="btn-abbrechen" id="btn-kartenverwaltung-oeffnen" title="Karten bearbeiten">✏️ Karten</button>
 </header>
 
 <main id="app">
@@ -148,6 +149,42 @@
       </table>
       <p class="hinweis-text" id="bestenliste-leer" style="display:none">Noch keine beendeten Spiele.</p>
       <button class="btn btn-link" id="btn-bestenliste-zurueck">Zurück</button>
+    </div>
+  </section>
+
+  <!-- 9: Kartenverwaltung -->
+  <section class="screen" id="screen-kartenverwaltung">
+    <div class="screen-inhalt">
+      <h2>✏️ Karten bearbeiten</h2>
+      <div class="kv-deck-umschalter">
+        <button class="btn btn-secondary kv-deck-btn" id="kv-deck-familie">🎴 Familie</button>
+        <button class="btn btn-secondary kv-deck-btn" id="kv-deck-auto">🚗 Auto</button>
+      </div>
+      <div class="kv-kartenliste" id="kv-kartenliste"></div>
+      <button class="btn btn-link" id="btn-kartenverwaltung-zurueck">Zurück</button>
+    </div>
+  </section>
+
+  <!-- 10: Karte bearbeiten -->
+  <section class="screen" id="screen-karte-bearbeiten">
+    <div class="screen-inhalt">
+      <h2>Karte bearbeiten</h2>
+      <div class="kb-foto-zeile">
+        <img id="kb-foto-vorschau" class="kb-foto-vorschau" src="avatar-placeholder.svg" alt="">
+        <div>
+          <label class="btn btn-secondary" for="kb-foto-input">Foto auswählen</label>
+          <input type="file" id="kb-foto-input" accept="image/*" style="display:none">
+        </div>
+      </div>
+      <label class="kb-feld-label" for="kb-name">Name</label>
+      <input type="text" id="kb-name" class="eingabe" maxlength="30">
+      <label class="kb-feld-label" for="kb-rolle">Rolle / Typ</label>
+      <input type="text" id="kb-rolle" class="eingabe" maxlength="30">
+      <div id="kb-eigenschaften-felder" class="kb-eigenschaften-felder"></div>
+      <p class="hinweis-text" id="kb-fehler"></p>
+      <button class="btn btn-primary btn-grow" id="btn-kb-speichern">Speichern</button>
+      <button class="btn btn-secondary btn-grow" id="btn-kb-zuruecksetzen">Auf Original zurücksetzen</button>
+      <button class="btn btn-link" id="btn-kb-abbrechen">Abbrechen</button>
     </div>
   </section>
 

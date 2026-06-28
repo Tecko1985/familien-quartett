@@ -131,6 +131,45 @@ h1, h2 { margin: 0 0 12px; }
 .bestenliste-tabelle th, .bestenliste-tabelle td { padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); }
 .bestenliste-tabelle th:not(:first-child), .bestenliste-tabelle td:not(:first-child) { text-align: right; }
 
+.kv-deck-umschalter { display: flex; gap: 8px; margin-bottom: 16px; }
+.kv-deck-btn { flex: 1; }
+.kv-deck-btn.aktiv { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+.kv-kartenliste { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; max-height: 60vh; overflow-y: auto; }
+.kv-karten-eintrag {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.kv-karten-eintrag:active { background: var(--bg); }
+.kv-thumb {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.kv-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.kv-thumb img.avatar-fallback { width: 60%; height: 60%; object-fit: contain; }
+.kv-name { flex: 1; font-weight: 600; }
+.kv-rolle { font-size: 13px; color: var(--muted); }
+
+.kb-foto-zeile { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.kb-foto-vorschau {
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  background: var(--bg);
+}
+.kb-feld-label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin: 12px 0 4px; }
+.kb-eigenschaften-felder .kb-feld-label:first-child { margin-top: 4px; }
+
 /* Lobby */
 .raumcode-box {
   display: flex;

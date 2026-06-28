@@ -18,6 +18,21 @@ const AUTO_PLAY_VERZOEGERUNG_MS = 1400;
 const GLEICHSTAND_VERZOEGERUNG_MS = 1800;
 const KARTEN_PRO_SPIELER_NACH_DECKGROESSE = { klein: 5, normal: 10, gross: null }; // null = ganzer Kartenpool
 const BESTENLISTE_PFAD = "bestenliste";
+const KARTEN_UEBERSTEUERUNGEN_PFAD = "kartenUebersteuerungen";
+
+// Merged eine Basiskarte aus mock-data.js mit einer optionalen, in Firebase gespeicherten
+// Bearbeitung (Name/Rolle/Foto/einzelne Eigenschaftswerte). Ohne Ueberschreibung bleibt
+// die Karte unveraendert.
+function wendeUebersteuerungAn(karte, ueberschreibung) {
+  if (!ueberschreibung) return karte;
+  return {
+    ...karte,
+    name: ueberschreibung.name || karte.name,
+    rolle: ueberschreibung.rolle || karte.rolle,
+    foto: ueberschreibung.foto !== undefined ? ueberschreibung.foto : karte.foto,
+    eigenschaften: { ...karte.eigenschaften, ...(ueberschreibung.eigenschaften || {}) }
+  };
+}
 
 function slugifyName(name) {
   return (name || "").trim().toLowerCase().replace(/[.#$\[\]/]/g, "_") || "unbekannt";
@@ -296,7 +311,9 @@ async function starteSpiel() {
   const uids = Object.keys(raum.spieler || {});
   if (uids.length < 2) return { erfolg: false, fehler: "Mindestens 2 Spieler nötig." };
 
-  const deck = getMockDeck(raum.kartenSet);
+  const ueberschreibungenSnap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${raum.kartenSet}`).once("value");
+  const ueberschreibungen = ueberschreibungenSnap.val() || {};
+  const deck = getMockDeck(raum.kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
   const proSpieler = KARTEN_PRO_SPIELER_NACH_DECKGROESSE[raum.deckgroesse || "normal"];
   const benoetigteAnzahl = proSpieler ? Math.min(proSpieler * uids.length, deck.length) : deck.length;
   const gemischt = mischeArray(deck).slice(0, benoetigteAnzahl);
@@ -405,6 +422,27 @@ async function ladeBestenliste() {
       };
     })
     .sort((a, b) => b.prozent - a.prozent || b.gewonnen - a.gewonnen);
+}
+
+// --- Kartenverwaltung (Karten bearbeiten + Fotos hinterlegen) ---
+
+async function ladeKartenZurBearbeitung(kartenSet) {
+  await authBereit;
+  const snap = await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}`).once("value");
+  const ueberschreibungen = snap.val() || {};
+  return getMockDeck(kartenSet).map(karte => wendeUebersteuerungAn(karte, ueberschreibungen[karte.id]));
+}
+
+async function speichereKartenUebersteuerung(kartenSet, kartenId, daten) {
+  await authBereit;
+  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}/${kartenId}`).set(daten);
+  return { erfolg: true };
+}
+
+async function setzeKarteZurueck(kartenSet, kartenId) {
+  await authBereit;
+  await db.ref(`${KARTEN_UEBERSTEUERUNGEN_PFAD}/${kartenSet}/${kartenId}`).remove();
+  return { erfolg: true };
 }
 
 function onZustandsAenderung(callback) {
@@ -700,5 +738,8 @@ const gameService = {
   neuesSpiel,
   getZustand,
   onZustandsAenderung,
-  ladeBestenliste
+  ladeBestenliste,
+  ladeKartenZurBearbeitung,
+  speichereKartenUebersteuerung,
+  setzeKarteZurueck
 };

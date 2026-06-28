@@ -20,6 +20,10 @@ let ausstehenderDeckgroesse = "normal";
 
 const DECKGROESSE_LABEL = { klein: "5 Karten/Spieler:in", normal: "10 Karten/Spieler:in", gross: "Maximum aus dem Kartenpool" };
 
+let kvAusgewaehltesDeck = "familie";
+let kvBearbeiteteKarte = null;
+let kvNeuesFoto = undefined; // undefined = unveraendert, sonst Daten-URL des neuen Fotos
+
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(el => el.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
@@ -201,13 +205,105 @@ function renderAbbrechenButton(zustand) {
   }
 }
 
+function renderKartenverwaltungButton(zustand) {
+  const btn = document.getElementById("btn-kartenverwaltung-oeffnen");
+  btn.style.display = PHASEN_MIT_ABBRUCH_BUTTON.includes(zustand.phase) ? "none" : "inline-block";
+}
+
 function render(zustand) {
   showScreen(SCREEN_FUER_PHASE[zustand.phase] || "screen-start");
   renderAbbrechenButton(zustand);
+  renderKartenverwaltungButton(zustand);
   if (zustand.phase === "lobby") renderLobby(zustand);
   if (zustand.phase === "amZug" || zustand.phase === "warteAufAndere") renderSpiel(zustand);
   if (zustand.phase === "vergleich") renderVergleich(zustand);
   if (zustand.phase === "beendet") renderGameOver(zustand);
+}
+
+// --- Kartenverwaltung (Karten bearbeiten + Fotos hinterlegen) ---
+
+function erzeugeKvEintrag(karte) {
+  const div = document.createElement("div");
+  div.className = "kv-karten-eintrag";
+
+  const thumb = document.createElement("span");
+  thumb.className = "kv-thumb";
+  thumb.style.background = karte.avatarFarbe;
+  const img = document.createElement("img");
+  img.alt = "";
+  if (karte.foto) {
+    img.src = karte.foto;
+  } else {
+    img.src = "avatar-placeholder.svg";
+    img.className = "avatar-fallback";
+  }
+  thumb.appendChild(img);
+
+  const name = document.createElement("span");
+  name.className = "kv-name";
+  name.textContent = karte.name;
+
+  const rolle = document.createElement("span");
+  rolle.className = "kv-rolle";
+  rolle.textContent = karte.rolle;
+
+  div.append(thumb, name, rolle);
+  div.addEventListener("click", () => oeffneKartenBearbeitung(karte));
+  return div;
+}
+
+async function ladeUndZeigeKartenverwaltung() {
+  showScreen("screen-kartenverwaltung");
+  document.getElementById("kv-deck-familie").classList.toggle("aktiv", kvAusgewaehltesDeck === "familie");
+  document.getElementById("kv-deck-auto").classList.toggle("aktiv", kvAusgewaehltesDeck === "auto");
+
+  const liste = document.getElementById("kv-kartenliste");
+  liste.innerHTML = "";
+  const ladeHinweis = document.createElement("p");
+  ladeHinweis.className = "hinweis-text";
+  ladeHinweis.textContent = "Lade Karten …";
+  liste.appendChild(ladeHinweis);
+
+  let karten;
+  try {
+    karten = await gameService.ladeKartenZurBearbeitung(kvAusgewaehltesDeck);
+  } catch (e) {
+    liste.innerHTML = "";
+    const fehlerText = document.createElement("p");
+    fehlerText.className = "hinweis-text fehler";
+    fehlerText.textContent = "Karten konnten nicht geladen werden.";
+    liste.appendChild(fehlerText);
+    return;
+  }
+  liste.innerHTML = "";
+  karten.forEach(karte => liste.appendChild(erzeugeKvEintrag(karte)));
+}
+
+function oeffneKartenBearbeitung(karte) {
+  kvBearbeiteteKarte = karte;
+  kvNeuesFoto = undefined;
+  document.getElementById("kb-fehler").textContent = "";
+  document.getElementById("kb-name").value = karte.name;
+  document.getElementById("kb-rolle").value = karte.rolle;
+  document.getElementById("kb-foto-vorschau").src = karte.foto || "avatar-placeholder.svg";
+
+  const kategorien = getKategorien(kvAusgewaehltesDeck);
+  const container = document.getElementById("kb-eigenschaften-felder");
+  container.innerHTML = "";
+  Object.keys(kategorien).forEach(schluessel => {
+    const meta = kategorien[schluessel];
+    const label = document.createElement("label");
+    label.className = "kb-feld-label";
+    label.textContent = `${meta.icon} ${meta.label}`;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.className = "eingabe";
+    input.dataset.kategorie = schluessel;
+    input.value = karte.eigenschaften[schluessel];
+    container.append(label, input);
+  });
+
+  showScreen("screen-karte-bearbeiten");
 }
 
 // --- Event-Wiring ---
@@ -326,6 +422,95 @@ document.getElementById("btn-spiel-abbrechen").addEventListener("click", () => {
     : "Spiel verlassen? Deine Karten werden gleichmäßig an die übrigen Mitspieler:innen verteilt.";
   if (!window.confirm(frage)) return;
   gameService.verlasseSpiel();
+});
+
+document.getElementById("btn-kartenverwaltung-oeffnen").addEventListener("click", () => {
+  ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("kv-deck-familie").addEventListener("click", () => {
+  kvAusgewaehltesDeck = "familie";
+  ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("kv-deck-auto").addEventListener("click", () => {
+  kvAusgewaehltesDeck = "auto";
+  ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("btn-kartenverwaltung-zurueck").addEventListener("click", () => {
+  showScreen("screen-start");
+});
+
+document.getElementById("kb-foto-input").addEventListener("change", e => {
+  const datei = e.target.files[0];
+  if (!datei) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const bild = new Image();
+    bild.onload = () => {
+      const maxBreite = 480;
+      const maxHoehe = 360;
+      let { width, height } = bild;
+      const skalierung = Math.min(maxBreite / width, maxHoehe / height, 1);
+      width = Math.round(width * skalierung);
+      height = Math.round(height * skalierung);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(bild, 0, 0, width, height);
+      kvNeuesFoto = canvas.toDataURL("image/jpeg", 0.8);
+      document.getElementById("kb-foto-vorschau").src = kvNeuesFoto;
+    };
+    bild.src = reader.result;
+  };
+  reader.readAsDataURL(datei);
+});
+
+document.getElementById("btn-kb-speichern").addEventListener("click", async () => {
+  const karte = kvBearbeiteteKarte;
+  if (!karte) return;
+  const name = document.getElementById("kb-name").value.trim();
+  const rolle = document.getElementById("kb-rolle").value.trim();
+  const fehlerEl = document.getElementById("kb-fehler");
+  if (!name || !rolle) {
+    fehlerEl.textContent = "Bitte Name und Rolle ausfüllen.";
+    return;
+  }
+  const eigenschaften = {};
+  document.querySelectorAll("#kb-eigenschaften-felder input").forEach(input => {
+    eigenschaften[input.dataset.kategorie] = Number(input.value) || 0;
+  });
+  const daten = {
+    name,
+    rolle,
+    foto: kvNeuesFoto !== undefined ? kvNeuesFoto : (karte.foto || null),
+    eigenschaften
+  };
+  fehlerEl.textContent = "";
+  try {
+    await gameService.speichereKartenUebersteuerung(kvAusgewaehltesDeck, karte.id, daten);
+  } catch (e) {
+    fehlerEl.textContent = "Speichern fehlgeschlagen.";
+    return;
+  }
+  await ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("btn-kb-zuruecksetzen").addEventListener("click", async () => {
+  const karte = kvBearbeiteteKarte;
+  if (!karte) return;
+  try {
+    await gameService.setzeKarteZurueck(kvAusgewaehltesDeck, karte.id);
+  } catch (e) {
+    document.getElementById("kb-fehler").textContent = "Zurücksetzen fehlgeschlagen.";
+    return;
+  }
+  await ladeUndZeigeKartenverwaltung();
+});
+
+document.getElementById("btn-kb-abbrechen").addEventListener("click", () => {
+  showScreen("screen-kartenverwaltung");
 });
 
 gameService.onZustandsAenderung(render);
