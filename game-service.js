@@ -446,7 +446,14 @@ async function verlasseSpiel() {
     await db.ref(`raeume/${code}/phase`).set("abgebrochen");
   } else {
     // Bitte den Gastgeber, die eigenen Karten zu verteilen, sobald es sicher ist.
-    await db.ref(`raeume/${code}/austrittAnfrageUid`).set(eigeneUid);
+    // Map statt Einzelfeld: Verlassen zwei Gäste kurz nacheinander, würde ein
+    // Einzelfeld die erste Anfrage überschreiben (Geist-Spieler bliebe im Raum
+    // und das Spiel hinge, sobald er am Zug wäre). Das Alt-Feld wird zusätzlich
+    // gesetzt, falls der Gastgeber noch eine alte App-Version offen hat.
+    await db.ref(`raeume/${code}`).update({
+      [`austrittAnfragen/${eigeneUid}`]: true,
+      austrittAnfrageUid: eigeneUid
+    });
   }
 
   loeseListenerAb();
@@ -571,12 +578,20 @@ function onZustandsAenderung(callback) {
 
 // --- Gastgeber-Schiedsrichter-Logik (einzige Instanz mit Zugriff auf alle Geheim-Hände) ---
 
+// Verhindert, dass zwei on()-Events im Fenster zwischen Trigger und dem
+// phase-Update auf "vergleich" die Auflösung doppelt starten (z.B. wenn im
+// selben Moment eine Austrittsanfrage geschrieben wird).
+let aufloesungLaeuftLokal = false;
+
 function pruefeUndLoeseAlsHostAus() {
   const raum = letzterOeffentlicherZustand;
   if (!raum || raum.hostId !== eigeneUid) return;
 
   if (raum.phase === "aufloesungLaeuft" && raum.aktuelleRunde && raum.aktuelleRunde.gewaehlteKategorie && !raum.aktuelleRunde.ausgespielteKarten) {
-    loeseRundeAufAlsHost(raum.aktuelleRunde.gewaehlteKategorie);
+    if (!aufloesungLaeuftLokal) {
+      aufloesungLaeuftLokal = true;
+      loeseRundeAufAlsHost(raum.aktuelleRunde.gewaehlteKategorie).finally(() => { aufloesungLaeuftLokal = false; });
+    }
   }
   if (raum.phase === "vergleich" && raum.aktuelleRunde && raum.aktuelleRunde.gewinnerSpielerId) {
     pruefeWeiterBedingungAlsHost();
@@ -585,9 +600,14 @@ function pruefeUndLoeseAlsHostAus() {
     planeBotZugFallsNoetig(raum.amZugSpielerId);
   }
   // Eine Karten-Runde ist nie "in der Luft", solange phase === "amZug" ist –
-  // genau dann ist es sicher, eine ausstehende Austrittsanfrage zu verarbeiten.
-  if (raum.phase === "amZug" && raum.austrittAnfrageUid && raum.spieler[raum.austrittAnfrageUid]) {
-    entferneSpielerUndVerteileKartenAlsHost(raum.austrittAnfrageUid);
+  // genau dann ist es sicher, ausstehende Austrittsanfragen zu verarbeiten.
+  // austrittAnfragen ist eine Map (mehrere gleichzeitige Anfragen möglich);
+  // das Alt-Feld austrittAnfrageUid wird für Gäste mit alter App-Version weiter beachtet.
+  if (raum.phase === "amZug") {
+    const anfragen = Object.keys(raum.austrittAnfragen || {});
+    if (raum.austrittAnfrageUid && !anfragen.includes(raum.austrittAnfrageUid)) anfragen.push(raum.austrittAnfrageUid);
+    const naechster = anfragen.find((uid) => raum.spieler[uid]);
+    if (naechster) entferneSpielerUndVerteileKartenAlsHost(naechster);
   }
 }
 
@@ -673,7 +693,12 @@ async function entferneSpielerUndVerteileKartenAlsHost(verlassenerUid) {
 
     updates[`raeume/${code}/spieler/${verlassenerUid}`] = null;
     updates[`geheime_karten/${code}/${verlassenerUid}`] = null;
-    updates[`raeume/${code}/austrittAnfrageUid`] = null;
+    updates[`raeume/${code}/austrittAnfragen/${verlassenerUid}`] = null;
+    // Alt-Feld nur löschen, wenn es diese (oder eine verwaiste) Anfrage betrifft —
+    // sonst ginge die Anfrage eines Gastes mit alter App-Version verloren.
+    if (raum.austrittAnfrageUid === verlassenerUid || !raum.spieler[raum.austrittAnfrageUid]) {
+      updates[`raeume/${code}/austrittAnfrageUid`] = null;
+    }
 
     await db.ref().update(updates);
   } finally {

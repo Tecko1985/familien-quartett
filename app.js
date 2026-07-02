@@ -63,6 +63,13 @@ function avatarInitiale(name) {
   return (name || "?").trim().charAt(0).toUpperCase();
 }
 
+// Für alle innerHTML-Templates: Spielernamen, Kartennamen/-fotos usw. kommen aus
+// Firebase (Mitspieler-Eingaben) — ohne Escaping könnte ein Beitritt mit einem
+// HTML-Namen Skript auf allen Geräten im Raum ausführen.
+function escapeHtml(str) {
+  return String(str ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
 // --- Foto-Lightbox (Großansicht per Klick) ---
 
 function oeffneFotoLightbox(src) {
@@ -83,24 +90,24 @@ function erzeugeKartenElement(karte, { waehlbar, kartenSet }, kategorien) {
   wrapper.style.setProperty("--avatar-farbe", karte.avatarFarbe);
 
   const fotoHtml = karte.foto
-    ? `<img src="${karte.foto}" alt="${karte.name}">`
+    ? `<img src="${escapeHtml(karte.foto)}" alt="${escapeHtml(karte.name)}">`
     : `<img class="avatar-fallback" src="avatar-placeholder.svg" alt="Kein Foto">`;
 
   const eigenschaftenHtml = Object.keys(karte.eigenschaften).map(schluessel => {
     const meta = kategorien[schluessel] || { label: schluessel, icon: "▫️" };
     const klasse = waehlbar ? "eigenschaft waehlbar" : "eigenschaft";
     return `
-      <li class="${klasse}" data-kategorie="${schluessel}">
-        <span class="eig-icon">${meta.icon}</span>
-        <span class="eig-label">${meta.label}</span>
-        <span class="eig-wert">${karte.eigenschaften[schluessel]}</span>
+      <li class="${klasse}" data-kategorie="${escapeHtml(schluessel)}">
+        <span class="eig-icon">${escapeHtml(meta.icon)}</span>
+        <span class="eig-label">${escapeHtml(meta.label)}</span>
+        <span class="eig-wert">${escapeHtml(karte.eigenschaften[schluessel])}</span>
       </li>`;
   }).join("");
 
-  const rolleHtml = kartenSet === "familie" ? "" : `<span class="karte-rolle">${karte.rolle}</span>`;
+  const rolleHtml = kartenSet === "familie" ? "" : `<span class="karte-rolle">${escapeHtml(karte.rolle)}</span>`;
   wrapper.innerHTML = `
     <div class="karte-kopf">
-      <span class="karte-name">${karte.name}</span>
+      <span class="karte-name">${escapeHtml(karte.name)}</span>
       ${rolleHtml}
     </div>
     <div class="karte-foto">${fotoHtml}</div>
@@ -131,8 +138,8 @@ function renderLobby(zustand) {
   zustand.spieler.forEach(s => {
     const li = document.createElement("li");
     li.innerHTML = `
-      <span class="spieler-avatar" style="background:${s.avatarFarbe}">${avatarInitiale(s.name)}</span>
-      <span class="spieler-name">${s.name}</span>
+      <span class="spieler-avatar" style="background:${escapeHtml(s.avatarFarbe)}">${escapeHtml(avatarInitiale(s.name))}</span>
+      <span class="spieler-name">${escapeHtml(s.name)}</span>
       <span class="spieler-badge">${s.istHost ? "Gastgeber:in" : ""}</span>
     `;
     liste.appendChild(li);
@@ -187,9 +194,9 @@ function renderVergleich(zustand) {
       const li = document.createElement("li");
       li.className = "quartett-karte--mini" + (istGewinner ? " gewinner" : "") + (istEigene ? " eigene" : "");
       li.innerHTML = `
-        <span class="mini-avatar" style="background:${eintrag.karte.avatarFarbe}">${avatarInitiale(spielerName)}</span>
-        <span class="mini-name">${spielerName} – ${eintrag.karte.name}</span>
-        <span class="mini-wert">${eintrag.karte.eigenschaften[runde.gewaehlteKategorie]}</span>
+        <span class="mini-avatar" style="background:${escapeHtml(eintrag.karte.avatarFarbe)}">${escapeHtml(avatarInitiale(spielerName))}</span>
+        <span class="mini-name">${escapeHtml(spielerName)} – ${escapeHtml(eintrag.karte.name)}</span>
+        <span class="mini-wert">${escapeHtml(eintrag.karte.eigenschaften[runde.gewaehlteKategorie])}</span>
       `;
       liste.appendChild(li);
     });
