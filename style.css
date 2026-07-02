@@ -40,6 +40,7 @@ body {
 
 .kopfzeile-titel { font-weight: 700; font-size: clamp(15px, 4vw, 18px); }
 .kopfzeile-status { font-size: 12px; opacity: 0.85; }
+.header-logo { height: 32px; width: auto; display: block; }
 
 .btn-abbrechen {
   background: rgba(255, 255, 255, 0.15);
